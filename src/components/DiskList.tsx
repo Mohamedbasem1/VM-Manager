@@ -1,21 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { VirtualDisk } from '../types';
 import { getVirtualDisks, deleteVirtualDisk, updateVirtualDisk } from '../services/qemuService';
 import { HardDrive, Trash2, RefreshCw, Edit2, X, Check } from 'lucide-react';
+
+// Define interfaces for individual disk actions to isolate state per disk
+interface DiskAction {
+  id: string;
+  isLoading: boolean;
+}
 
 const DiskList: React.FC = () => {
   const [disks, setDisks] = useState<VirtualDisk[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
+  
+  // Use separate objects for tracking deletion and editing states
+  const [deletingDisk, setDeletingDisk] = useState<DiskAction | null>(null);
+  const [editingDisk, setEditingDisk] = useState<DiskAction & { size: number } | null>(null);
+  
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
-  const [editedDisk, setEditedDisk] = useState<{ size: number }>({ size: 0 });
 
-  const loadDisks = async () => {
+  // Create a memoized version of loadDisks to avoid recreation on each render
+  const loadDisks = useCallback(async () => {
     setLoading(true);
     try {
       const diskList = await getVirtualDisks();
@@ -27,61 +34,109 @@ const DiskList: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadDisks();
-  }, []);
+  }, [loadDisks]);
 
   const handleDelete = async (id: string) => {
-    setIsDeleting(true);
+    setDeletingDisk({ id, isLoading: true });
     setDeleteError(null);
+
     try {
       await deleteVirtualDisk(id);
-      setDisks(disks.filter(disk => disk.id !== id));
+      setDisks(prevDisks => prevDisks.filter(disk => disk.id !== id));
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Failed to delete disk');
     } finally {
-      setIsDeleting(false);
-      setDeleteId(null);
+      setDeletingDisk(null);
     }
   };
 
   const handleEditStart = (disk: VirtualDisk) => {
-    setEditId(disk.id);
-    setEditedDisk({ size: disk.size });
-    setIsEditing(false); // Set to false as we're just starting the edit, not submitting yet
+    setEditingDisk({ 
+      id: disk.id, 
+      size: disk.size,
+      isLoading: false 
+    });
     setEditError(null);
   };
 
   const handleEditCancel = () => {
-    setEditId(null);
-    setIsEditing(false);
+    setEditingDisk(null);
     setEditError(null);
   };
 
   const handleEditSave = async (id: string) => {
-    setIsEditing(true);
+    if (!editingDisk) return;
+
+    setEditingDisk({
+      ...editingDisk,
+      isLoading: true
+    });
+
     setEditError(null);
-    
-    // Form validation
-    if (editedDisk.size <= 0) {
+
+    if (editingDisk.size <= 0) {
       setEditError('Disk size must be greater than 0 GB');
-      setIsEditing(false);
+      setEditingDisk({
+        ...editingDisk,
+        isLoading: false
+      });
       return;
     }
-    
+
     try {
-      const updatedDisk = await updateVirtualDisk(id, { size: editedDisk.size });
-      setDisks(disks.map(disk => disk.id === id ? { ...disk, ...updatedDisk } : disk));
-      setEditId(null);
+      const diskToUpdate = disks.find(disk => disk.id === id);
+      if (!diskToUpdate) {
+        throw new Error('Disk not found');
+      }
+
+      await updateVirtualDisk(id, { size: editingDisk.size });
+
+      setDisks(prevDisks => 
+        prevDisks.map(disk => 
+          disk.id === id ? { ...disk, size: editingDisk.size } : disk
+        )
+      );
+
+      setEditingDisk(null);
     } catch (err) {
       setEditError(err instanceof Error ? err.message : 'Failed to update disk');
-    } finally {
-      setIsEditing(false);
+      setEditingDisk({
+        ...editingDisk,
+        isLoading: false
+      });
     }
   };
 
+  // Helper for applying changes to only the input value
+  const handleSizeChange = (value: number) => {
+    if (editingDisk && !isNaN(value)) {
+      setEditingDisk({
+        ...editingDisk,
+        size: value
+      });
+    }
+  };
+
+  // Helper for handling action clicks to prevent event propagation
+  const handleActionClick = (e: React.MouseEvent, action: () => void) => {
+    e.preventDefault();
+    e.stopPropagation();
+    action();
+  };
+
+  // Determine if a specific disk is being deleted
+  const isDiskBeingDeleted = (id: string) => 
+    deletingDisk !== null && deletingDisk.id === id;
+  
+  // Determine if a specific disk is being edited
+  const isDiskBeingEdited = (id: string) => 
+    editingDisk !== null && editingDisk.id === id;
+
+  // Display loading state
   if (loading && disks.length === 0) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
@@ -93,6 +148,7 @@ const DiskList: React.FC = () => {
     );
   }
 
+  // Display error state
   if (error) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
@@ -100,7 +156,7 @@ const DiskList: React.FC = () => {
           {error}
         </div>
         <button
-          onClick={loadDisks}
+          onClick={() => loadDisks()}
           className="mt-4 flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
         >
           <RefreshCw size={16} className="mr-2" />
@@ -110,6 +166,7 @@ const DiskList: React.FC = () => {
     );
   }
 
+  // Display empty state
   if (disks.length === 0) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
@@ -130,7 +187,7 @@ const DiskList: React.FC = () => {
           <h2 className="text-xl font-bold text-gray-800 dark:text-white">Virtual Disks</h2>
         </div>
         <button
-          onClick={loadDisks}
+          onClick={(e) => handleActionClick(e, loadDisks)}
           className="flex items-center px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
         >
           <RefreshCw size={14} className="mr-1" />
@@ -181,19 +238,15 @@ const DiskList: React.FC = () => {
                   {disk.format}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                  {editId === disk.id ? (
+                  {isDiskBeingEdited(disk.id) ? (
                     <div className="flex items-center">
                       <input
                         type="number"
                         min="1"
                         max="100"
-                        value={editedDisk.size}
-                        onChange={(e) => {
-                          const value = parseInt(e.target.value);
-                          if (!isNaN(value)) {
-                            setEditedDisk({ size: value });
-                          }
-                        }}
+                        value={editingDisk?.size || disk.size}
+                        onChange={(e) => handleSizeChange(parseInt(e.target.value))}
+                        onClick={(e) => e.stopPropagation()}
                         className="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-md text-sm dark:text-white"
                       />
                       <span className="ml-1">GB</span>
@@ -206,53 +259,53 @@ const DiskList: React.FC = () => {
                   {new Date(disk.createdAt).toLocaleString()}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  {deleteId === disk.id ? (
+                  {isDiskBeingDeleted(disk.id) ? (
                     <div className="flex justify-end space-x-2">
                       <button
-                        onClick={() => setDeleteId(null)}
+                        onClick={(e) => handleActionClick(e, () => setDeletingDisk(null))}
                         className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
-                        disabled={isDeleting}
+                        disabled={deletingDisk?.isLoading}
                       >
                         Cancel
                       </button>
                       <button
-                        onClick={() => handleDelete(disk.id)}
+                        onClick={(e) => handleActionClick(e, () => handleDelete(disk.id))}
                         className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
-                        disabled={isDeleting}
+                        disabled={deletingDisk?.isLoading}
                       >
-                        {isDeleting ? 'Deleting...' : 'Confirm'}
+                        {deletingDisk?.isLoading ? 'Deleting...' : 'Confirm'}
                       </button>
                     </div>
-                  ) : editId === disk.id ? (
+                  ) : isDiskBeingEdited(disk.id) ? (
                     <div className="flex justify-end space-x-2">
                       <button
-                        onClick={handleEditCancel}
+                        onClick={(e) => handleActionClick(e, handleEditCancel)}
                         className="flex items-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
-                        disabled={isEditing}
+                        disabled={editingDisk?.isLoading}
                       >
                         <X size={16} className="mr-1" />
                         Cancel
                       </button>
                       <button
-                        onClick={() => handleEditSave(disk.id)}
+                        onClick={(e) => handleActionClick(e, () => handleEditSave(disk.id))}
                         className="flex items-center text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300"
-                        disabled={isEditing}
+                        disabled={editingDisk?.isLoading}
                       >
                         <Check size={16} className="mr-1" />
-                        {isEditing ? 'Saving...' : 'Save'}
+                        {editingDisk?.isLoading ? 'Saving...' : 'Save'}
                       </button>
                     </div>
                   ) : (
                     <div className="flex justify-end space-x-2">
                       <button
-                        onClick={() => handleEditStart(disk)}
+                        onClick={(e) => handleActionClick(e, () => handleEditStart(disk))}
                         className="flex items-center text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
                       >
                         <Edit2 size={16} className="mr-1" />
                         Edit
                       </button>
                       <button
-                        onClick={() => setDeleteId(disk.id)}
+                        onClick={(e) => handleActionClick(e, () => setDeletingDisk({ id: disk.id, isLoading: false }))}
                         className="flex items-center text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
                       >
                         <Trash2 size={16} className="mr-1" />

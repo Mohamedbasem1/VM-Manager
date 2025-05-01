@@ -4,6 +4,7 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import Dashboard from './pages/Dashboard';
 import Create from './pages/Create';
+import NotificationsContainer from './components/NotificationsContainer';
 import './index.css';
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
           </Routes>
         </main>
         <Footer />
+        <NotificationsContainer />
       </Router>
     </div>
   );

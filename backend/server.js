@@ -6,20 +6,27 @@ const fs = require('fs');
 
 // Initialize express app
 const app = express();
-const PORT = 5000;
+const PORT = 5002; // Changed from 5001 to 5002 to avoid conflicts
 
-// Path to QEMU installation
-const QEMU_PATH = 'C:\\Program Files\\qemu';
-
+// Path to QEMU installation - Updated to the correct path
+const QEMU_PATH = 'C:\\msys64\\ucrt64\\bin';
 // Path to store VM data
 const VM_DATA_PATH = path.join(__dirname, 'data');
 const VM_DATA_FILE = path.join(VM_DATA_PATH, 'vms.json');
 const DISK_INFO_FILE = path.join(VM_DATA_PATH, 'disk_info.json');
+// Path to store ISO files
+const isosDir = path.join(__dirname, 'isos');
 
 // Ensure data directory exists
 if (!fs.existsSync(VM_DATA_PATH)) {
   fs.mkdirSync(VM_DATA_PATH, { recursive: true });
   console.log('Created data directory:', VM_DATA_PATH);
+}
+
+// Ensure ISOs directory exists
+if (!fs.existsSync(isosDir)) {
+  fs.mkdirSync(isosDir, { recursive: true });
+  console.log('Created ISOs directory:', isosDir);
 }
 
 // Middleware
@@ -95,6 +102,9 @@ let vmIdCounter = vms.length > 0 ? Math.max(...vms.map(vm => parseInt(vm.id))) +
 
 // In-memory disk info store
 let diskInfo = loadDiskInfo();
+
+// In-memory ISO info store
+let isoInfo = {};
 
 // Helper: Find VM by ID
 function findVM(id) {
@@ -415,6 +425,166 @@ app.delete('/api/disks/:name/:format', (req, res) => {
   }
 });
 
+// API endpoint to get all ISOs
+app.get('/api/isos', (req, res) => {
+  try {
+    // Read the ISOs directory
+    fs.readdir(isosDir, (err, files) => {
+      if (err) {
+        console.error(`Error reading ISOs directory: ${err.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to read ISOs directory',
+          error: err.message
+        });
+      }
+      
+      // Filter for ISO files
+      const isoFiles = files.filter(file => file.toLowerCase().endsWith('.iso'));
+      
+      console.log('Found ISO files in directory:', isoFiles);
+      
+      // Create array of ISOs with details
+      const isos = isoFiles.map(file => {
+        const name = file;
+        const filePath = path.join(isosDir, file);
+        const stats = fs.statSync(filePath);
+        
+        // Calculate size in MB
+        const sizeInMB = Math.round(stats.size / (1024 * 1024));
+        
+        return {
+          id: `iso_${name.replace(/\s+/g, '_').toLowerCase()}`,
+          name,
+          path: filePath,
+          size: sizeInMB,
+          uploadedAt: stats.birthtime || new Date()
+        };
+      });
+      
+      // If the ubuntu ISO is seen in the directory but not properly indexed
+      const ubuntuIsoFile = files.find(file => 
+        file.toLowerCase().includes('ubuntu') && 
+        file.toLowerCase().endsWith('.iso')
+      );
+      
+      const hasUbuntuIso = isos.some(iso => 
+        iso.name.toLowerCase().includes('ubuntu') && 
+        iso.name.toLowerCase().endsWith('.iso')
+      );
+      
+      if (ubuntuIsoFile && !hasUbuntuIso) {
+        const filePath = path.join(isosDir, ubuntuIsoFile);
+        const stats = fs.statSync(filePath);
+        const sizeInMB = Math.round(stats.size / (1024 * 1024));
+        
+        isos.push({
+          id: 'default_ubuntu',
+          name: ubuntuIsoFile,
+          path: filePath,
+          size: sizeInMB || 3000, // Fallback size if can't determine
+          uploadedAt: stats.birthtime || new Date()
+        });
+        
+        console.log('Added Ubuntu ISO with path:', filePath);
+      }
+      
+      // Add default Ubuntu ISO if no ISOs were found at all
+      if (isos.length === 0) {
+        const defaultIsoPath = path.join(isosDir, 'ubuntu-24.04.2-desktop-amd64.iso');
+        
+        // Check if the file exists
+        if (fs.existsSync(defaultIsoPath)) {
+          console.log('Found default Ubuntu ISO at:', defaultIsoPath);
+          const stats = fs.statSync(defaultIsoPath);
+          const sizeInMB = Math.round(stats.size / (1024 * 1024));
+          
+          isos.push({
+            id: 'default_ubuntu',
+            name: 'ubuntu-24.04.2-desktop-amd64.iso',
+            path: defaultIsoPath,
+            size: sizeInMB || 3000, // Fallback size if can't determine
+            uploadedAt: stats.birthtime || new Date()
+          });
+        } else {
+          console.log('Default Ubuntu ISO not found at:', defaultIsoPath);
+        }
+      }
+      
+      console.log('Returning ISOs:', isos);
+      
+      res.status(200).json({
+        success: true,
+        isos
+      });
+    });
+  } catch (err) {
+    console.error('Unexpected error:', err);
+    res.status(500).json({ 
+      success: false, 
+      message: 'An unexpected error occurred', 
+      error: err.message 
+    });
+  }
+});
+
+// API endpoint to register a custom ISO path
+app.post('/api/register-iso', (req, res) => {
+  try {
+    const { isoPath, name } = req.body;
+    
+    if (!isoPath) {
+      return res.status(400).json({
+        success: false,
+        message: 'ISO path is required'
+      });
+    }
+    
+    // Check if the file exists
+    if (!fs.existsSync(isoPath)) {
+      return res.status(400).json({
+        success: false,
+        message: `ISO file not found at path: ${isoPath}`
+      });
+    }
+    
+    // Get file stats
+    const stats = fs.statSync(isoPath);
+    
+    // Verify it's a file
+    if (!stats.isFile()) {
+      return res.status(400).json({
+        success: false,
+        message: `The path does not point to a file: ${isoPath}`
+      });
+    }
+    
+    // Create ISO entry
+    const isoName = name || path.basename(isoPath);
+    const isoId = `custom_${Date.now()}`;
+    const sizeInMB = Math.round(stats.size / (1024 * 1024));
+    
+    // Return ISO info
+    res.status(200).json({
+      success: true,
+      iso: {
+        id: isoId,
+        name: isoName,
+        path: isoPath,
+        size: sizeInMB,
+        uploadedAt: stats.birthtime || new Date()
+      }
+    });
+  } catch (err) {
+    console.error('Unexpected error:', err);
+    res.status(500).json({ 
+      success: false, 
+      message: 'An unexpected error occurred', 
+      error: err.message 
+    });
+  }
+});
+
 // Create VM
 app.post('/api/create-vm', (req, res) => {
   const { name, cpuCores, memory, disk, iso } = req.body;
@@ -427,8 +597,25 @@ app.post('/api/create-vm', (req, res) => {
   console.log('- Disk:', disk ? `${disk.name}.${disk.format} (${disk.path})` : 'No disk');
   console.log('- ISO:', iso ? `${iso.name} (${iso.path})` : 'No ISO');
   
-  if (!name || !cpuCores || !memory || !disk) {
-    return res.status(400).json({ success: false, message: 'All VM parameters (including ISO) are required' });
+  if (!name || !cpuCores || !memory) {
+    return res.status(400).json({ success: false, message: 'Parameters (name, cpuCores, memory) are required' });
+  }
+
+  // Validate disk
+  if (!disk || !disk.path) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Selected disk not found or invalid. Please select a valid disk.' 
+    });
+  }
+
+  // Check if disk exists
+  if (!fs.existsSync(disk.path)) {
+    console.error(`Disk file not found: ${disk.path}`);
+    return res.status(400).json({ 
+      success: false, 
+      message: `Disk file not found: ${disk.path}. Please verify the disk exists in the backend directory.` 
+    });
   }
 
   // Check if ISO exists and has a valid path
@@ -442,9 +629,10 @@ app.post('/api/create-vm', (req, res) => {
   // Check if the ISO file exists on disk
   if (!fs.existsSync(iso.path)) {
     console.error(`ISO file not found: ${iso.path}`);
+    
     return res.status(400).json({ 
       success: false, 
-      message: `ISO file not found: ${iso.path}. Please provide a valid ISO path.` 
+      message: `ISO file not found: ${iso.path}. Please verify that the ISO file exists at this location.` 
     });
   }
 
@@ -516,28 +704,54 @@ app.get('/api/vms/:id', (req, res) => {
 app.post('/api/vms/:id/start', (req, res) => {
   const vm = vms.find(vm => vm.id === req.params.id);
   if (!vm) return res.status(404).json({ success: false, message: 'VM not found' });
-  if (vm.status === 'running') return res.json({ success: true, message: 'VM already running' });
+  if (vm.status === 'running') {
+    // Reset status to stopped first to allow restarting
+    vm.status = 'stopped';
+    saveVMData();
+  }
 
-  const qemuSystemPath = '"C:\\Program Files\\qemu\\qemu-system-x86_64.exe"';
-  let command = [
-    qemuSystemPath,
-    '-m', vm.memory,
-    '-cpu', 'max',
-    '-smp', vm.cpuCores,
-    '-hda', `"${vm.disk.path}"`,
-    '-cdrom', `"${vm.iso.path}"`,
-    '-boot', 'menu=on',
-    '-display', 'sdl'
-  ].join(' ');
+  const qemuSystemPath = path.join(QEMU_PATH, 'qemu-system-x86_64.exe');
+  
+  // Create a batch file to execute QEMU with proper parameters
+  const batchFilePath = path.join(__dirname, `start_vm_${vm.id}.bat`);
+  const qemuCommand = [
+    `@echo off`,
+    `echo Starting QEMU VM: ${vm.name}`,
+    `echo.`,
+    `"${qemuSystemPath}" ^`,
+    `-m ${vm.memory} ^`,
+    `-smp ${vm.cpuCores} ^`,
+    `-hda "${vm.disk.path}" ^`,
+    `-cdrom "${vm.iso && vm.iso.path ? vm.iso.path : ''}" ^`,
+    `-boot menu=on ^`,
+    `-display sdl ^`,
+    `-no-reboot ^`,
+    `-no-shutdown`,
+    `echo VM closed with exit code %ERRORLEVEL%`,
+    `pause`
+  ].join('\r\n');
 
-  // Start QEMU process (detached)
-  const child = spawn(command, { shell: true, detached: true, stdio: 'ignore' });
-  child.unref();
+  console.log('Creating batch file for QEMU launch:', batchFilePath);
+  fs.writeFileSync(batchFilePath, qemuCommand, 'utf8');
 
-  vm.status = 'running';
-  vm.lastStarted = new Date();
-  saveVMData();
-  res.json({ success: true, message: 'VM started', vm });
+  try {
+    // Run the batch file using cmd.exe
+    const child = spawn('cmd.exe', ['/c', 'start', '', batchFilePath], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: false
+    });
+    
+    child.unref();
+    vm.status = 'running';
+    vm.lastStarted = new Date();
+    saveVMData();
+    res.json({ success: true, message: 'VM started successfully', vm });
+  } catch (err) {
+    console.error('QEMU spawn exception:', err);
+    fs.appendFileSync('qemu_error.log', `QEMU exception: ${err.message}\n`);
+    res.status(500).json({ success: false, message: 'Failed to start QEMU: ' + err.message });
+  }
 });
 
 // Stop VM (actually terminate the QEMU process)

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { VirtualMachine } from '../types';
-import { PlayCircle, StopCircle, Trash2, HardDrive, Cpu, MemoryStick as Memory, Edit2 } from 'lucide-react';
+import { PlayCircle, StopCircle, Trash2, HardDrive, Cpu, MemoryStick as Memory, Edit2, Activity, ChevronDown, ChevronUp, Disc, Calendar } from 'lucide-react';
 import { startVirtualMachine, stopVirtualMachine, deleteVirtualMachine, updateVirtualMachine } from '../services/qemuService';
 
 interface VMCardProps {
@@ -13,20 +13,26 @@ const VMCard: React.FC<VMCardProps> = ({ vm, onVMUpdated, onVMDeleted }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [editedValues, setEditedValues] = useState({
     name: vm.name,
     cpuCores: vm.cpuCores,
     memory: vm.memory
   });
   const [error, setError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const handleStart = async () => {
     setIsLoading(true);
+    setError(null);
     try {
       await startVirtualMachine(vm.id);
+      setActionSuccess('VM started successfully! QEMU window should be open.');
+      setTimeout(() => setActionSuccess(null), 5000);
       onVMUpdated();
     } catch (err) {
       console.error('Failed to start VM:', err);
+      setError('Failed to start VM. Check if QEMU is installed properly.');
     } finally {
       setIsLoading(false);
     }
@@ -34,11 +40,15 @@ const VMCard: React.FC<VMCardProps> = ({ vm, onVMUpdated, onVMDeleted }) => {
 
   const handleStop = async () => {
     setIsLoading(true);
+    setError(null);
     try {
       await stopVirtualMachine(vm.id);
+      setActionSuccess('VM stopped successfully');
+      setTimeout(() => setActionSuccess(null), 5000);
       onVMUpdated();
     } catch (err) {
       console.error('Failed to stop VM:', err);
+      setError('Failed to stop VM. It may have already stopped or crashed.');
     } finally {
       setIsLoading(false);
     }
@@ -65,6 +75,8 @@ const VMCard: React.FC<VMCardProps> = ({ vm, onVMUpdated, onVMDeleted }) => {
         cpuCores: editedValues.cpuCores,
         memory: editedValues.memory
       });
+      setActionSuccess('VM updated successfully');
+      setTimeout(() => setActionSuccess(null), 5000);
       onVMUpdated();
       setIsEditing(false);
     } catch (err) {
@@ -77,13 +89,13 @@ const VMCard: React.FC<VMCardProps> = ({ vm, onVMUpdated, onVMDeleted }) => {
   const getStatusColor = () => {
     switch (vm.status) {
       case 'running':
-        return 'text-green-500';
+        return 'text-green-500 bg-green-100 dark:bg-green-900/30';
       case 'stopped':
-        return 'text-gray-500 dark:text-gray-400';
+        return 'text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700/30';
       case 'paused':
-        return 'text-yellow-500';
+        return 'text-yellow-500 bg-yellow-100 dark:bg-yellow-900/30';
       default:
-        return 'text-gray-500 dark:text-gray-400';
+        return 'text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700/30';
     }
   };
 
@@ -102,9 +114,9 @@ const VMCard: React.FC<VMCardProps> = ({ vm, onVMUpdated, onVMDeleted }) => {
       <div className="bg-gradient-to-r from-blue-500 to-purple-500 dark:from-blue-800 dark:to-purple-800 p-4 text-white">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold truncate">{vm.name}</h3>
-          <div className={`flex items-center ${getStatusColor()}`}>
+          <div className={`flex items-center px-2 py-1 rounded-full ${getStatusColor()}`}>
             <span className="inline-block h-3 w-3 rounded-full bg-current mr-2"></span>
-            <span className="text-white text-sm capitalize">{vm.status}</span>
+            <span className="text-sm capitalize font-medium">{vm.status}</span>
           </div>
         </div>
       </div>
@@ -112,8 +124,16 @@ const VMCard: React.FC<VMCardProps> = ({ vm, onVMUpdated, onVMDeleted }) => {
       {/* Content */}
       <div className="p-4 dark:text-white">
         {error && (
-          <div className="bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-3 py-2 rounded mb-4 text-sm">
-            {error}
+          <div className="bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-3 py-2 rounded mb-4 text-sm flex items-start">
+            <Activity size={16} className="mr-2 mt-0.5 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+        
+        {actionSuccess && (
+          <div className="bg-green-100 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 px-3 py-2 rounded mb-4 text-sm flex items-start">
+            <Activity size={16} className="mr-2 mt-0.5 flex-shrink-0" />
+            <span>{actionSuccess}</span>
           </div>
         )}
         
@@ -184,12 +204,59 @@ const VMCard: React.FC<VMCardProps> = ({ vm, onVMUpdated, onVMDeleted }) => {
                   {vm.disk.name} ({vm.disk.size} GB, {vm.disk.format})
                 </span>
               </div>
+              {vm.iso && (
+                <div className="flex items-center col-span-2">
+                  <Disc size={16} className="text-gray-500 dark:text-gray-400 mr-2" />
+                  <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                    ISO: {vm.iso.name}
+                  </span>
+                </div>
+              )}
             </div>
             
-            <div className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              <div>Created: {formatDate(vm.createdAt)}</div>
-              {vm.lastStarted && <div>Last started: {formatDate(vm.lastStarted)}</div>}
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                <div className="flex items-center">
+                  <Calendar size={12} className="mr-1" />
+                  Created: {formatDate(vm.createdAt)}
+                </div>
+                {vm.lastStarted && (
+                  <div className="flex items-center mt-1">
+                    <Activity size={12} className="mr-1" />
+                    Last started: {formatDate(vm.lastStarted)}
+                  </div>
+                )}
+              </div>
+              <button 
+                onClick={() => setShowDetails(!showDetails)} 
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center"
+              >
+                {showDetails ? (
+                  <>Less <ChevronUp size={14} className="ml-1" /></>
+                ) : (
+                  <>More <ChevronDown size={14} className="ml-1" /></>
+                )}
+              </button>
             </div>
+            
+            {showDetails && (
+              <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-md text-sm">
+                <h4 className="font-medium mb-2 text-gray-700 dark:text-gray-300">VM Details</h4>
+                <div className="space-y-2 text-gray-600 dark:text-gray-400">
+                  <div>
+                    <span className="font-medium">VM ID:</span> {vm.id}
+                  </div>
+                  <div>
+                    <span className="font-medium">Disk Path:</span> <span className="text-xs break-all">{vm.disk.path}</span>
+                  </div>
+                  {vm.iso && (
+                    <div>
+                      <span className="font-medium">ISO Path:</span> <span className="text-xs break-all">{vm.iso.path}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </>
         )}
         

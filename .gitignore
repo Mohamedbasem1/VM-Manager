@@ -30,6 +30,10 @@ backend/disks/*.qcow2
 backend/disks/*.vdi
 backend/disks/*.vmdk
 
+# ISO files and VM start batch files
+backend/isos/
+backend/start_vm_*.bat
+
 # Data files that should be backed up separately
 backend/data/*.json
 
