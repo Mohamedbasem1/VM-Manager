@@ -319,7 +319,23 @@ app.put('/api/disks/:name/:format/resize', (req, res) => {
     
     // Build the QEMU command with explicit path to qemu-img
     const qemuImgPath = path.join(QEMU_PATH, 'qemu-img.exe');
-    const command = `"${qemuImgPath}" resize "${diskPath}" ${sizeWithUnit}`;
+    
+    // Check if this is a shrink operation by comparing with current disk size
+    const currentSize = diskInfo[sanitizedName]?.size || '0G';
+    
+    // Parse sizes to numbers for comparison
+    const currentSizeValue = parseInt(currentSize);
+    const newSizeValue = parseInt(size);
+    
+    let command;
+    // If this is a shrink operation, add the --shrink flag
+    if (newSizeValue < currentSizeValue) {
+      console.log(`Shrink operation detected: ${currentSize} -> ${sizeWithUnit}`);
+      console.log(`Adding --shrink flag to qemu-img resize command`);
+      command = `"${qemuImgPath}" resize --shrink "${diskPath}" ${sizeWithUnit}`;
+    } else {
+      command = `"${qemuImgPath}" resize "${diskPath}" ${sizeWithUnit}`;
+    }
     
     console.log(`Executing resize command: ${command}`);
     
