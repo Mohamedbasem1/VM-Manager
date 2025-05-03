@@ -250,12 +250,16 @@ const DiskList: React.FC = () => {
                         value={editingDisk?.size || disk.size}
                         onChange={(e) => handleSizeChange(parseInt(e.target.value))}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-md text-sm dark:text-white"
+                        id={`disk-size-input-${disk.id}`}
+                        name={`disk-size-input-${disk.name}`}
+                        data-testid={`disk-size-input-${disk.id}`}
+                        aria-label={`Edit size for disk ${disk.name}`}
+                        className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-md text-sm dark:text-white disk-size-input"
                       />
                       <span className="ml-1">GB</span>
                     </div>
                   ) : (
-                    <>{disk.size} GB</>
+                    <span data-testid={`disk-size-display-${disk.id}`}>{disk.size} GB</span>
                   )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
@@ -275,6 +279,7 @@ const DiskList: React.FC = () => {
                         onClick={(e) => handleActionClick(e, () => handleDelete(disk.id))}
                         className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
                         disabled={deletingDisk?.isLoading}
+                        data-testid={`confirm-delete-${disk.id}`}
                       >
                         {deletingDisk?.isLoading ? 'Deleting...' : 'Confirm'}
                       </button>
@@ -285,6 +290,8 @@ const DiskList: React.FC = () => {
                         onClick={(e) => handleActionClick(e, handleEditCancel)}
                         className="flex items-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
                         disabled={editingDisk?.isLoading}
+                        data-testid={`cancel-edit-${disk.id}`}
+                        id={`cancel-edit-${disk.name}`}
                       >
                         <X size={16} className="mr-1" />
                         Cancel
@@ -293,6 +300,8 @@ const DiskList: React.FC = () => {
                         onClick={(e) => handleActionClick(e, () => handleEditSave(disk.id))}
                         className="flex items-center text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300"
                         disabled={editingDisk?.isLoading}
+                        data-testid={`save-edit-${disk.id}`}
+                        id={`save-edit-${disk.name}`}
                       >
                         <Check size={16} className="mr-1" />
                         {editingDisk?.isLoading ? 'Saving...' : 'Save'}
@@ -303,6 +312,8 @@ const DiskList: React.FC = () => {
                       <button
                         onClick={(e) => handleActionClick(e, () => handleEditStart(disk))}
                         className="flex items-center text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                        data-testid={`edit-disk-${disk.id}`}
+                        id={`edit-disk-${disk.name}`}
                       >
                         <Edit2 size={16} className="mr-1" />
                         Edit
@@ -310,6 +321,7 @@ const DiskList: React.FC = () => {
                       <button
                         onClick={(e) => handleActionClick(e, () => setDeletingDisk({ id: disk.id, isLoading: false }))}
                         className="flex items-center text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
+                        data-testid={`delete-disk-${disk.id}`}
                       >
                         <Trash2 size={16} className="mr-1" />
                         Delete
