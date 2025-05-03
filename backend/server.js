@@ -1,4 +1,4 @@
-const express = require('express');
+onst express = require('express');
 const cors = require('cors');
 const { exec, spawn } = require('child_process');
 const path = require('path');
@@ -644,48 +644,8 @@ app.post('/api/create-vm', (req, res) => {
   vms.push(newVM);
   saveVMData();
 
-  // Immediately start the VM after creation
-  const qemuSystemPath = path.join(QEMU_PATH, 'qemu-system-x86_64.exe');
-  
-  // Build command string with proper quotes
-  let command = [
-    `"${qemuSystemPath}"`,
-    '-m', memory,
-    '-cpu', 'max',
-    '-smp', cpuCores,
-    '-hda', `"${disk.path}"`,
-    '-cdrom', `"${iso.path}"`,
-    '-boot', 'menu=on',
-    '-display', 'sdl'
-  ].join(' ');
-
-  console.log('QEMU Command:', command);
-
-  try {
-    // Start the VM process
-    const child = spawn(command, { shell: true, detached: true, stdio: 'ignore' });
-    
-    child.on('error', (err) => {
-      console.error('QEMU process error:', err);
-    });
-    
-    child.unref();
-    
-    console.log('VM process started with PID:', child.pid);
-    
-    newVM.status = 'running';
-    newVM.lastStarted = new Date();
-    saveVMData();
-
-    res.status(201).json({ success: true, vm: newVM });
-  } catch (err) {
-    console.error('Failed to start VM:', err);
-    res.status(500).json({ 
-      success: true, 
-      message: 'VM created but failed to start. Error: ' + err.message,
-      vm: newVM
-    });
-  }
+  // Return the newly created VM without starting it
+  res.status(201).json({ success: true, vm: newVM });
 });
 
 // List VMs
@@ -700,7 +660,7 @@ app.get('/api/vms/:id', (req, res) => {
   res.json({ success: true, vm });
 });
 
-// Start VM (for demo, just change status)
+// Start VM 
 app.post('/api/vms/:id/start', (req, res) => {
   const vm = vms.find(vm => vm.id === req.params.id);
   if (!vm) return res.status(404).json({ success: false, message: 'VM not found' });
@@ -727,8 +687,16 @@ app.post('/api/vms/:id/start', (req, res) => {
     `-display sdl ^`,
     `-no-reboot ^`,
     `-no-shutdown`,
-    `echo VM closed with exit code %ERRORLEVEL%`,
-    `pause`
+    `set VM_EXIT_CODE=%ERRORLEVEL%`,
+    `echo VM closed with exit code %VM_EXIT_CODE%`,
+    `if %VM_EXIT_CODE% EQU 0 (`,
+    `  echo VM shutdown normally - closing command window in 3 seconds...`,
+    `  timeout /t 3 >nul`,
+    `  exit`,
+    `) else (`,
+    `  echo VM terminated with error - press any key to close this window`,
+    `  pause >nul`,
+    `)`
   ].join('\r\n');
 
   console.log('Creating batch file for QEMU launch:', batchFilePath);
