@@ -21,6 +21,9 @@ const DiskList: React.FC = () => {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
 
+  // Calculate total disk size
+  const totalDiskSize = disks.reduce((total, disk) => total + disk.size, 0);
+
   // Create a memoized version of loadDisks to avoid recreation on each render
   const loadDisks = useCallback(async () => {
     setLoading(true);

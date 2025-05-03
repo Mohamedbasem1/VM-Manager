@@ -24,11 +24,14 @@ const Dashboard: React.FC = () => {
           getVirtualDisks()
         ]);
         
+        // Calculate total disk space
+        const totalSpace = disks.reduce((total, disk) => total + disk.size, 0);
+        
         setSystemStatus({
           totalVMs: vms.length,
           runningVMs: vms.filter(vm => vm.status === 'running').length,
           totalDisks: disks.length,
-          diskSpace: disks.reduce((total, disk) => total + disk.size, 0),
+          diskSpace: totalSpace,
           qemuStatus: 'online'
         });
       } catch (err) {
@@ -48,6 +51,11 @@ const Dashboard: React.FC = () => {
     const intervalId = setInterval(fetchSystemStatus, 30000);
     return () => clearInterval(intervalId);
   }, []);
+
+  // Format disk size to display properly
+  const formatDiskSize = (size: number) => {
+    return `${size} GB`;
+  };
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -111,9 +119,10 @@ const Dashboard: React.FC = () => {
             <div className="flex justify-between items-end">
               <div>
                 <p className="text-2xl font-bold text-gray-800 dark:text-white">{systemStatus.totalDisks}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {systemStatus.diskSpace} GB total
-                </p>
+                <div className="flex items-center mt-1">
+                  <span className="text-sm font-bold text-purple-600 dark:text-purple-400">{systemStatus.diskSpace}G</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">GB total</span>
+                </div>
               </div>
               <Link to="/create" className="text-purple-600 dark:text-purple-400 hover:underline text-xs flex items-center">
                 Create Disk <ChevronRight size={12} className="ml-1" />

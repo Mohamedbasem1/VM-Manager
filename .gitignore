@@ -32,6 +32,7 @@ backend/disks/*.vmdk
 
 # ISO files and VM start batch files
 backend/isos/
+backend/isos/**
 backend/start_vm_*.bat
 
 # Data files that should be backed up separately
