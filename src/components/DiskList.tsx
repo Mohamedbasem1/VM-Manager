@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { VirtualDisk } from '../types';
-import { getVirtualDisks, deleteVirtualDisk, updateVirtualDisk } from '../services/qemuService';
+import { 
+  getVirtualDisks, 
+  deleteVirtualDisk, 
+  updateVirtualDisk, 
+  getVirtualMachines 
+} from '../services/qemuService';
 import { HardDrive, Trash2, RefreshCw, Edit2, X, Check } from 'lucide-react';
 
 // Define interfaces for individual disk actions to isolate state per disk
@@ -36,6 +41,17 @@ const DiskList: React.FC = () => {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  // Refresh VMs when disks are updated
+  const refreshVMs = useCallback(async () => {
+    try {
+      // Trigger a VM list refresh - this will be called after disk resize
+      await getVirtualMachines();
+      console.log('VM list refreshed after disk update');
+    } catch (err) {
+      console.error('Failed to refresh VMs:', err);
     }
   }, []);
 
@@ -96,7 +112,8 @@ const DiskList: React.FC = () => {
         throw new Error('Disk not found');
       }
 
-      await updateVirtualDisk(id, { size: editingDisk.size });
+      // Pass the refreshVMs callback to update VM cards when disk size changes
+      await updateVirtualDisk(id, { size: editingDisk.size }, refreshVMs);
 
       setDisks(prevDisks => 
         prevDisks.map(disk => 

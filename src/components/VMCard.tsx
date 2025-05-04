@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { VirtualMachine } from '../types';
-import { PlayCircle, StopCircle, Trash2, HardDrive, Cpu, MemoryStick as Memory, Edit2, Activity, ChevronDown, ChevronUp, Disc, Calendar } from 'lucide-react';
+import { PlayCircle, StopCircle, Trash2, HardDrive, Cpu, MemoryStick as Memory, Edit2, Activity, ChevronDown, ChevronUp, Disc, Calendar, AlertTriangle } from 'lucide-react';
 import { startVirtualMachine, stopVirtualMachine, deleteVirtualMachine, updateVirtualMachine } from '../services/qemuService';
 
 interface VMCardProps {
@@ -21,10 +21,29 @@ const VMCard: React.FC<VMCardProps> = ({ vm, onVMUpdated, onVMDeleted }) => {
   });
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [hasDiskWarning, setHasDiskWarning] = useState(false);
+
+  // Check if VM has a valid disk
+  useEffect(() => {
+    // Check if disk exists and has a valid path
+    if (!vm.disk || !vm.disk.path) {
+      setHasDiskWarning(true);
+    } else {
+      setHasDiskWarning(false);
+    }
+  }, [vm]);
 
   const handleStart = async () => {
     setIsLoading(true);
     setError(null);
+
+    // Check for missing disk before even trying to start
+    if (!vm.disk || !vm.disk.path) {
+      setError('This VM does not have a valid virtual disk. Please check the VM configuration.');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       await startVirtualMachine(vm.id);
       setActionSuccess('VM started successfully! QEMU window should be open.');
@@ -134,6 +153,14 @@ const VMCard: React.FC<VMCardProps> = ({ vm, onVMUpdated, onVMDeleted }) => {
           <div className="bg-green-100 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 px-3 py-2 rounded mb-4 text-sm flex items-start">
             <Activity size={16} className="mr-2 mt-0.5 flex-shrink-0" />
             <span>{actionSuccess}</span>
+          </div>
+        )}
+        
+        {/* Disk Warning */}
+        {hasDiskWarning && (
+          <div className="bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 px-3 py-2 rounded mb-4 text-sm flex items-start">
+            <AlertTriangle size={16} className="mr-2 mt-0.5 flex-shrink-0" />
+            <span>This VM may have a missing or invalid virtual disk. Please check the configuration before starting.</span>
           </div>
         )}
         

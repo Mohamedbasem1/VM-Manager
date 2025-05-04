@@ -319,23 +319,7 @@ app.put('/api/disks/:name/:format/resize', (req, res) => {
     
     // Build the QEMU command with explicit path to qemu-img
     const qemuImgPath = path.join(QEMU_PATH, 'qemu-img.exe');
-    
-    // Check if this is a shrink operation by comparing with current disk size
-    const currentSize = diskInfo[sanitizedName]?.size || '0G';
-    
-    // Parse sizes to numbers for comparison
-    const currentSizeValue = parseInt(currentSize);
-    const newSizeValue = parseInt(size);
-    
-    let command;
-    // If this is a shrink operation, add the --shrink flag
-    if (newSizeValue < currentSizeValue) {
-      console.log(`Shrink operation detected: ${currentSize} -> ${sizeWithUnit}`);
-      console.log(`Adding --shrink flag to qemu-img resize command`);
-      command = `"${qemuImgPath}" resize --shrink "${diskPath}" ${sizeWithUnit}`;
-    } else {
-      command = `"${qemuImgPath}" resize "${diskPath}" ${sizeWithUnit}`;
-    }
+    const command = `"${qemuImgPath}" resize "${diskPath}" ${sizeWithUnit}`;
     
     console.log(`Executing resize command: ${command}`);
     
@@ -366,17 +350,37 @@ app.put('/api/disks/:name/:format/resize', (req, res) => {
       // Get updated disk info
       const stats = fs.statSync(diskPath);
       
+      // Create the updated disk object
+      const updatedDisk = {
+        name: sanitizedName,
+        format,
+        path: diskPath,
+        size: sizeWithUnit,
+        createdAt: diskInfo[sanitizedName]?.createdAt || stats.birthtime
+      };
+      
+      // Update the disk information in all VMs that use this disk
+      let vmsUpdated = 0;
+      vms.forEach(vm => {
+        if (vm.disk && vm.disk.name === sanitizedName && vm.disk.format === format) {
+          // Update the disk info in this VM
+          vm.disk = { ...updatedDisk, id: `disk_${sanitizedName}_${format}` };
+          vmsUpdated++;
+        }
+      });
+      
+      // Save VM data if any VMs were updated
+      if (vmsUpdated > 0) {
+        console.log(`Updated disk information in ${vmsUpdated} VMs`);
+        saveVMData();
+      }
+      
       // Return success response with the disk information
       res.status(200).json({
         success: true,
-        message: 'Disk resized successfully',
-        disk: {
-          name: sanitizedName,
-          format,
-          path: diskPath,
-          size: sizeWithUnit,
-          createdAt: stats.birthtime
-        }
+        message: `Disk resized successfully. Updated in ${vmsUpdated} VMs.`,
+        disk: updatedDisk,
+        vmsUpdated
       });
     });
     
@@ -684,6 +688,40 @@ app.post('/api/vms/:id/start', (req, res) => {
     // Reset status to stopped first to allow restarting
     vm.status = 'stopped';
     saveVMData();
+  }
+
+  // Check if the virtual disk exists
+  if (!vm.disk || !vm.disk.path) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'No virtual disk associated with this VM' 
+    });
+  }
+
+  // Check if the disk file exists
+  if (!fs.existsSync(vm.disk.path)) {
+    console.error(`Disk file not found: ${vm.disk.path}`);
+    return res.status(400).json({ 
+      success: false, 
+      message: `Virtual disk not found: ${vm.disk.name}. The disk file may have been deleted or moved.` 
+    });
+  }
+
+  // Check if ISO exists and has a valid path
+  if (!vm.iso || !vm.iso.path) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'No ISO file associated with this VM' 
+    });
+  }
+
+  // Check if the ISO file exists on disk
+  if (!fs.existsSync(vm.iso.path)) {
+    console.error(`ISO file not found: ${vm.iso.path}`);
+    return res.status(400).json({ 
+      success: false, 
+      message: `ISO file not found: ${vm.iso.name}. Please verify that the ISO file exists at this location.` 
+    });
   }
 
   const qemuSystemPath = path.join(QEMU_PATH, 'qemu-system-x86_64.exe');

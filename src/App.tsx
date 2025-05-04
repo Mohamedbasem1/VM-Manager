@@ -4,6 +4,7 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import Dashboard from './pages/Dashboard';
 import Create from './pages/Create';
+import Home from './pages/Home';
 import NotificationsContainer from './components/NotificationsContainer';
 import './index.css';
 
@@ -29,7 +30,7 @@ function App() {
           <Routes>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/create" element={<Create />} />
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<Home />} />
           </Routes>
         </main>
         <Footer />

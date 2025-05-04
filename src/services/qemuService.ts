@@ -122,7 +122,23 @@ export const startVirtualMachine = async (id: string): Promise<VirtualMachine> =
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.message || 'Failed to start VM');
+      // Check for specific missing disk error
+      if (data.message && (
+        data.message.includes('No virtual disk') || 
+        data.message.includes('Virtual disk not found') ||
+        data.message.includes('Disk file not found')
+      )) {
+        notify('error', 'Virtual Disk Error: ' + data.message);
+        throw new Error(data.message);
+      } else if (data.message && (
+        data.message.includes('No ISO file') || 
+        data.message.includes('ISO file not found')
+      )) {
+        notify('error', 'ISO File Error: ' + data.message);
+        throw new Error(data.message);
+      } else {
+        throw new Error(data.message || 'Failed to start VM');
+      }
     }
     
     notify('success', `VM started successfully. QEMU window should appear.`);
@@ -277,7 +293,8 @@ export const deleteVirtualDisk = async (id: string): Promise<void> => {
 // Update a virtual disk
 export const updateVirtualDisk = async (
   id: string,
-  params: { size: number } // Size in GB
+  params: { size: number }, // Size in GB
+  onVMsUpdated?: () => void // Callback to refresh VMs after disk update
 ): Promise<VirtualDisk> => {
   try {
     // Find the disk to get name and format
@@ -304,7 +321,18 @@ export const updateVirtualDisk = async (
       throw new Error(data.message || 'Failed to update disk');
     }
     
-    notify('success', `Disk "${disk.name}" resized to ${params.size}GB successfully`);
+    // Check if any VMs were updated with the new disk size
+    const vmsUpdatedMessage = data.vmsUpdated > 0 
+      ? ` and updated in ${data.vmsUpdated} VM${data.vmsUpdated > 1 ? 's' : ''}`
+      : '';
+      
+    notify('success', `Disk "${disk.name}" resized to ${params.size}GB successfully${vmsUpdatedMessage}`);
+    
+    // If VMs were updated, trigger the callback to refresh the VM list
+    if (data.vmsUpdated > 0 && onVMsUpdated) {
+      onVMsUpdated();
+    }
+    
     return data.disk;
   } catch (error) {
     return handleApiError(error, 'Failed to update virtual disk');
