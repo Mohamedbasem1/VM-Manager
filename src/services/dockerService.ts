@@ -30,6 +30,19 @@ export const getDockerfiles = async (): Promise<Dockerfile[]> => {
   }
 };
 
+// Delete a Dockerfile
+export const deleteDockerfile = async (path: string): Promise<any> => {
+  try {
+    const response = await axios.delete(`${API_URL}/dockerfile`, {
+      data: { path }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting Dockerfile:', error);
+    throw new Error(error.response?.data?.message || 'Failed to delete Dockerfile');
+  }
+};
+
 // Build a Docker image from a Dockerfile
 export const buildDockerImage = async (dockerfilePath: string, tag: string): Promise<any> => {
   try {
@@ -53,6 +66,17 @@ export const getDockerImages = async (): Promise<DockerImage[]> => {
   } catch (error) {
     console.error('Error getting Docker images:', error);
     throw new Error(error.response?.data?.message || 'Failed to get Docker images');
+  }
+};
+
+// Delete a Docker image
+export const deleteDockerImage = async (imageId: string): Promise<any> => {
+  try {
+    const response = await axios.delete(`${API_URL}/docker/images/${imageId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting Docker image:', error);
+    throw new Error(error.response?.data?.message || 'Failed to delete Docker image');
   }
 };
 

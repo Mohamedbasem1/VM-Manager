@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DockerImage, Dockerfile } from '../types';
-import { getDockerImages, getDockerfiles, buildDockerImage } from '../services/dockerService';
-import { RefreshCw, Tag, Package, Clock, Box, AlertTriangle, CheckCircle, Loader } from 'lucide-react';
+import { getDockerImages, getDockerfiles, buildDockerImage, deleteDockerImage } from '../services/dockerService';
+import { RefreshCw, Tag, Package, Clock, Box, AlertTriangle, CheckCircle, Loader, Trash2 } from 'lucide-react';
 
 const DockerImageList: React.FC = () => {
   const [images, setImages] = useState<DockerImage[]>([]);
@@ -12,6 +12,7 @@ const DockerImageList: React.FC = () => {
   const [buildError, setBuildError] = useState<string | null>(null);
   const [showBuildForm, setShowBuildForm] = useState(false);
   const [buildSuccess, setBuildSuccess] = useState(false);
+  const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
   
   // Build form state
   const [selectedDockerfilePath, setSelectedDockerfilePath] = useState('');
@@ -64,6 +65,19 @@ const DockerImageList: React.FC = () => {
       setBuildError(err instanceof Error ? err.message : 'Failed to build Docker image');
     } finally {
       setBuildLoading(false);
+    }
+  };
+
+  const handleDeleteImage = async (imageId: string) => {
+    setDeletingImageId(imageId);
+    try {
+      await deleteDockerImage(imageId);
+      // Remove the deleted image from the list
+      setImages(prevImages => prevImages.filter(image => image.id !== imageId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete Docker image');
+    } finally {
+      setDeletingImageId(null);
     }
   };
 
@@ -230,6 +244,9 @@ const DockerImageList: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Created
                 </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -257,6 +274,25 @@ const DockerImageList: React.FC = () => {
                       <Clock size={14} className="mr-1.5 text-gray-400" />
                       {image.created}
                     </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button
+                      onClick={() => handleDeleteImage(image.id)}
+                      disabled={deletingImageId === image.id}
+                      className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 flex items-center justify-end ml-auto"
+                    >
+                      {deletingImageId === image.id ? (
+                        <>
+                          <Loader size={16} className="mr-1 animate-spin" />
+                          Deleting...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 size={16} className="mr-1" />
+                          Delete
+                        </>
+                      )}
+                    </button>
                   </td>
                 </tr>
               ))}

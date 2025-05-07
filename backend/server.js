@@ -1083,6 +1083,50 @@ app.get('/api/docker/images', (req, res) => {
   }
 });
 
+// API endpoint to delete a Docker image
+app.delete('/api/docker/images/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Image ID is required'
+      });
+    }
+    
+    // Execute Docker command to remove the image
+    exec(`docker rmi ${id}`, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Error deleting Docker image: ${error.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to delete Docker image',
+          error: error.message,
+          details: stderr
+        });
+      }
+      
+      console.log(`Docker image deleted successfully: ${id}`);
+      console.log(`Command stdout: ${stdout}`);
+      
+      res.status(200).json({
+        success: true,
+        message: 'Docker image deleted successfully',
+        imageId: id,
+        output: stdout
+      });
+    });
+  } catch (err) {
+    console.error('Error deleting Docker image:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete Docker image',
+      error: err.message
+    });
+  }
+});
+
 // API endpoint to list Docker containers
 app.get('/api/docker/containers', (req, res) => {
   try {
@@ -1224,6 +1268,54 @@ app.post('/api/docker/containers/run', (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to run Docker container',
+      error: err.message
+    });
+  }
+});
+
+// API endpoint to delete a Dockerfile
+app.delete('/api/dockerfile', (req, res) => {
+  try {
+    const { path: filePath } = req.body;
+    
+    if (!filePath) {
+      return res.status(400).json({
+        success: false,
+        message: 'Dockerfile path is required'
+      });
+    }
+    
+    // Validate the file path to prevent path traversal
+    const normalizedPath = path.normalize(filePath);
+    if (normalizedPath.includes('..')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid file path'
+      });
+    }
+    
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dockerfile not found at the specified path'
+      });
+    }
+    
+    // Delete the file
+    fs.unlinkSync(filePath);
+    
+    console.log(`Dockerfile deleted successfully: ${filePath}`);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Dockerfile deleted successfully'
+    });
+  } catch (err) {
+    console.error('Error deleting Dockerfile:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete Dockerfile',
       error: err.message
     });
   }

@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import VMList from '../components/VMList';
 import DiskList from '../components/DiskList';
-import { Cpu, Plus, Activity, Server, HardDrive, MemoryStick, RefreshCw, ChevronRight } from 'lucide-react';
+import DockerfileList from '../components/DockerfileList';
+import DockerImageList from '../components/DockerImageList';
+import DockerContainerList from '../components/DockerContainerList';
+import { Cpu, Plus, Activity, Server, HardDrive, MemoryStick, RefreshCw, ChevronRight, FileCode, Package, Box } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getVirtualMachines, getVirtualDisks } from '../services/qemuService';
 
@@ -14,6 +17,7 @@ const Dashboard: React.FC = () => {
     qemuStatus: 'unknown'
   });
   const [loading, setLoading] = useState(true);
+  const [dockerTab, setDockerTab] = useState<'dockerfiles' | 'images' | 'containers'>('images');
 
   useEffect(() => {
     const fetchSystemStatus = async () => {
@@ -175,6 +179,55 @@ const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 gap-8">
         <VMList />
         <DiskList />
+        
+        {/* Docker Section */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+          <div className="border-b border-gray-200 dark:border-gray-700">
+            <div className="flex">
+              <button
+                className={`flex-1 px-4 py-3 text-sm font-medium ${
+                  dockerTab === 'dockerfiles'
+                    ? 'border-b-2 border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                } flex items-center justify-center transition-all duration-200`}
+                onClick={() => setDockerTab('dockerfiles')}
+              >
+                <FileCode size={16} className="mr-2" />
+                Dockerfiles
+              </button>
+              
+              <button
+                className={`flex-1 px-4 py-3 text-sm font-medium ${
+                  dockerTab === 'images'
+                    ? 'border-b-2 border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                } flex items-center justify-center transition-all duration-200`}
+                onClick={() => setDockerTab('images')}
+              >
+                <Package size={16} className="mr-2" />
+                Docker Images
+              </button>
+              
+              <button
+                className={`flex-1 px-4 py-3 text-sm font-medium ${
+                  dockerTab === 'containers'
+                    ? 'border-b-2 border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                } flex items-center justify-center transition-all duration-200`}
+                onClick={() => setDockerTab('containers')}
+              >
+                <Box size={16} className="mr-2" />
+                Docker Containers
+              </button>
+            </div>
+          </div>
+          
+          <div>
+            {dockerTab === 'dockerfiles' && <DockerfileList />}
+            {dockerTab === 'images' && <DockerImageList />}
+            {dockerTab === 'containers' && <DockerContainerList />}
+          </div>
+        </div>
       </div>
     </div>
   );
