@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DockerContainer } from '../types';
 import { getDockerContainers, stopDockerContainer } from '../services/dockerService';
 import { RefreshCw, Box, Clock, StopCircle, Terminal, Activity, AlertTriangle } from 'lucide-react';
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 
 const DockerContainerList: React.FC = () => {
   const [containers, setContainers] = useState<DockerContainer[]>([]);
@@ -78,8 +79,14 @@ const DockerContainerList: React.FC = () => {
       )}
       
       {containers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-40 text-center">
-          <Box size={40} className="text-gray-300 dark:text-gray-600 mb-4" />
+        <div className="flex flex-col items-center justify-center h-60 text-center">
+          <div className="w-40 h-40 mb-4">
+            <DotLottieReact 
+              src="https://lottie.host/91603d67-967d-4aea-afcd-9b6ba17182ea/sFaMyxLy55.json" 
+              loop 
+              autoplay 
+            />
+          </div>
           <p className="text-gray-500 dark:text-gray-400 mb-2">No running containers</p>
           <p className="text-sm text-gray-400 dark:text-gray-500">Build and run a container to get started</p>
         </div>

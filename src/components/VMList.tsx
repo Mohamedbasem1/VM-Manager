@@ -3,6 +3,7 @@ import { VirtualMachine } from '../types';
 import { getVirtualMachines } from '../services/qemuService';
 import VMCard from './VMCard';
 import { RefreshCw, MonitorSmartphone } from 'lucide-react';
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 
 const VMList: React.FC = () => {
   const [vms, setVMs] = useState<VirtualMachine[]>([]);
@@ -58,8 +59,14 @@ const VMList: React.FC = () => {
   if (vms.length === 0) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-        <div className="flex flex-col items-center justify-center h-40 text-center">
-          <MonitorSmartphone size={40} className="text-gray-300 dark:text-gray-600 mb-4" />
+        <div className="flex flex-col items-center justify-center h-60 text-center">
+          <div className="w-40 h-40 mb-4">
+            <DotLottieReact 
+              src="https://lottie.host/ca8febda-2b9a-4f68-a6df-be72ada2946a/wv4Zz3IjPZ.json" 
+              loop 
+              autoplay 
+            />
+          </div>
           <p className="text-gray-500 dark:text-gray-400 mb-2">No virtual machines available</p>
           <p className="text-sm text-gray-400 dark:text-gray-500">Create a new VM to get started</p>
         </div>

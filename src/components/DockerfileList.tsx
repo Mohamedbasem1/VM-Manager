@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Dockerfile } from '../types';
 import { getDockerfiles, deleteDockerfile } from '../services/dockerService';
 import { RefreshCw, FileCode, Clock, File, AlertTriangle, Trash2, Loader } from 'lucide-react';
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 
 const DockerfileList: React.FC = () => {
   const [dockerfiles, setDockerfiles] = useState<Dockerfile[]>([]);
@@ -77,8 +78,14 @@ const DockerfileList: React.FC = () => {
       )}
       
       {dockerfiles.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-40 text-center">
-          <FileCode size={40} className="text-gray-300 dark:text-gray-600 mb-4" />
+        <div className="flex flex-col items-center justify-center h-60 text-center">
+          <div className="w-40 h-40 mb-4">
+            <DotLottieReact 
+              src="https://lottie.host/d4d5f47c-5389-4769-b194-0cc3b503446a/TLGxjeodpz.json" 
+              loop 
+              autoplay 
+            />
+          </div>
           <p className="text-gray-500 dark:text-gray-400 mb-2">No Dockerfiles available</p>
           <p className="text-sm text-gray-400 dark:text-gray-500">Create a Dockerfile to get started</p>
         </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DockerImage, Dockerfile } from '../types';
 import { getDockerImages, getDockerfiles, buildDockerImage, deleteDockerImage } from '../services/dockerService';
 import { RefreshCw, Tag, Package, Clock, Box, AlertTriangle, CheckCircle, Loader, Trash2 } from 'lucide-react';
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 
 const DockerImageList: React.FC = () => {
   const [images, setImages] = useState<DockerImage[]>([]);
@@ -219,8 +220,14 @@ const DockerImageList: React.FC = () => {
       )}
       
       {images.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-40 text-center">
-          <Package size={40} className="text-gray-300 dark:text-gray-600 mb-4" />
+        <div className="flex flex-col items-center justify-center h-60 text-center">
+          <div className="w-40 h-40 mb-4">
+            <DotLottieReact 
+              src="https://lottie.host/74762741-9eea-4850-89f8-73b8490248e8/VffZvvNxzT.json" 
+              loop 
+              autoplay 
+            />
+          </div>
           <p className="text-gray-500 dark:text-gray-400 mb-2">No Docker images available</p>
           <p className="text-sm text-gray-400 dark:text-gray-500">Build an image to get started</p>
         </div>

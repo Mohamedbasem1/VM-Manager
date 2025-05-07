@@ -7,6 +7,7 @@ import {
   getVirtualMachines 
 } from '../services/qemuService';
 import { HardDrive, Trash2, RefreshCw, Edit2, X, Check } from 'lucide-react';
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 
 // Define interfaces for individual disk actions to isolate state per disk
 interface DiskAction {
@@ -190,8 +191,14 @@ const DiskList: React.FC = () => {
   if (disks.length === 0) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-        <div className="flex flex-col items-center justify-center h-40 text-center">
-          <HardDrive size={40} className="text-gray-300 dark:text-gray-600 mb-4" />
+        <div className="flex flex-col items-center justify-center h-60 text-center">
+          <div className="w-40 h-40 mb-4">
+            <DotLottieReact 
+              src="https://lottie.host/7fcfb595-a6e3-4117-8829-30052b160c92/E2jzFjS0CR.json" 
+              loop 
+              autoplay 
+            />
+          </div>
           <p className="text-gray-500 dark:text-gray-400 mb-2">No virtual disks available</p>
           <p className="text-sm text-gray-400 dark:text-gray-500">Create a new disk to get started</p>
         </div>
