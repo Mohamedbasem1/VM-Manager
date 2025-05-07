@@ -71,7 +71,6 @@ const Header: React.FC = () => {
     { name: 'Home', path: '/', icon: <Home size={16} className="mr-2" /> },
     { name: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={16} className="mr-2" /> },
     { name: 'Create', path: '/create', icon: <Command size={16} className="mr-2" /> },
-    { name: 'Docker', path: '/create?tab=docker', icon: <Package size={16} className="mr-2" /> },
   ];
 
   const authLinks = [
@@ -133,59 +132,71 @@ const Header: React.FC = () => {
                 ))}
               </div>
             )}
-            {/* Notifications */}
-            <button
-              className="relative p-2 rounded-md text-gray-500 dark:text-gray-300 hover:text-purple-700 dark:hover:text-purple-300 hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-400"
-              aria-label="Notifications"
-              title="Notifications"
-            >
-              <Bell size={20} />
-              {notifications > 0 && (
-                <span className="absolute top-1 right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-red-600 rounded-full">
-                  {notifications}
-                </span>
-              )}
-            </button>
-            {/* Profile Dropdown */}
-            <div className="relative">
+            {/* Notifications - only show if logged in */}
+            {isLoggedIn && (
               <button
-                onClick={() => setProfileOpen((v) => !v)}
-                className="flex items-center p-2 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                aria-label="User menu"
-                title="Account"
+                className="relative p-2 rounded-md text-gray-500 dark:text-gray-300 hover:text-purple-700 dark:hover:text-purple-300 hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                aria-label="Notifications"
+                title="Notifications"
               >
-                <User size={20} className="text-gray-500 dark:text-gray-300" />
-                <span className="sr-only">Open user menu</span>
+                <Bell size={20} />
+                {notifications > 0 && (
+                  <span className="absolute top-1 right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-red-600 rounded-full">
+                    {notifications}
+                  </span>
+                )}
               </button>
-              {profileOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-2 z-50 border border-gray-200 dark:border-gray-700 animate-fade-in">
-                  <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 font-semibold border-b border-gray-100 dark:border-gray-700">
-                    {profile?.full_name || user?.email}
+            )}
+            {/* Profile Dropdown - only show if logged in */}
+            {isLoggedIn && (
+              <div className="relative">
+                <button
+                  onClick={() => setProfileOpen((v) => !v)}
+                  className="flex items-center p-2 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-400 group transition-all duration-200 transform hover:scale-105"
+                  aria-label="User menu"
+                  title="Account"
+                >
+                  <User size={20} className="text-purple-600 dark:text-purple-400 group-hover:text-purple-700 dark:group-hover:text-purple-300 transition-colors" />
+                  <span className="sr-only">Open user menu</span>
+                </button>
+                {profileOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white/90 dark:bg-gray-800/90 rounded-lg shadow-lg py-2 z-50 border border-gray-200 dark:border-gray-700 animate-fade-in backdrop-blur-sm">
+                    <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                        {profile?.full_name || user?.email}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
+                        {user?.email}
+                      </p>
+                    </div>
+                    <Link
+                      to="/profile"
+                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center"
+                      onClick={() => setProfileOpen(false)}
+                    >
+                      <User size={16} className="mr-2 text-purple-500" />
+                      Your Profile
+                    </Link>
+                    <Link
+                      to="/settings"
+                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center"
+                      onClick={() => setProfileOpen(false)}
+                    >
+                      <Settings size={16} className="mr-2 text-purple-500" />
+                      Settings
+                    </Link>
+                    <div className="border-t border-gray-100 dark:border-gray-700 my-1"></div>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors flex items-center"
+                    >
+                      <LogOut size={16} className="mr-2" />
+                      Sign Out
+                    </button>
                   </div>
-                  <Link
-                    to="/profile"
-                    className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center"
-                  >
-                    <User size={16} className="mr-2" />
-                    Your Profile
-                  </Link>
-                  <Link
-                    to="/settings"
-                    className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center"
-                  >
-                    <Settings size={16} className="mr-2" />
-                    Settings
-                  </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors flex items-center"
-                  >
-                    <LogOut size={16} className="mr-2" />
-                    Sign Out
-                  </button>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
             {/* Connection Status */}
             <span className={`hidden md:inline px-3 py-1 rounded-full text-xs font-medium ${
               isConnected
@@ -197,14 +208,14 @@ const Header: React.FC = () => {
             {/* Dark mode toggle */}
             <button
               onClick={toggleDarkMode}
-              className="p-2 rounded-md text-gray-500 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-400"
+              className="p-2 rounded-md text-gray-500 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-400 transition-all duration-200 transform hover:scale-105"
               aria-label={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
               title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
             >
               {darkMode ? (
-                <Sun size={20} className="h-5 w-5" />
+                <Sun size={20} className="h-5 w-5 text-amber-500" />
               ) : (
-                <Moon size={20} className="h-5 w-5" />
+                <Moon size={20} className="h-5 w-5 text-indigo-600" />
               )}
             </button>
             {/* Mobile menu button */}
@@ -228,7 +239,7 @@ const Header: React.FC = () => {
       </div>
       {/* Mobile menu */}
       {mobileMenuOpen && (
-        <div className="sm:hidden bg-white dark:bg-gray-800 shadow-lg rounded-b-lg border-t border-gray-200 dark:border-gray-700 transition-all duration-200">
+        <div className="sm:hidden bg-white/90 dark:bg-gray-800/90 shadow-lg rounded-b-lg border-t border-gray-200 dark:border-gray-700 transition-all duration-200 backdrop-blur-sm">
           <div className="px-2 pt-2 pb-3 space-y-1">
             {navLinks.map((link) => (
               <Link
@@ -327,16 +338,23 @@ const Header: React.FC = () => {
                   <span className="text-xs">All</span>
                 </Link>
               </div>
-              {/* Mobile profile */}
-              <div className="flex items-center justify-center mt-4">
-                <button
-                  className="flex items-center p-2 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  aria-label="User menu"
-                  title="Account"
-                >
-                  <User size={20} className="text-gray-500 dark:text-gray-300" />
-                </button>
-              </div>
+              {/* Mobile profile - only show if logged in */}
+              {isLoggedIn && (
+                <div className="flex items-center justify-center mt-4">
+                  <button
+                    onClick={() => isLoggedIn && handleLogout()}
+                    className="flex items-center p-2 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    aria-label="User menu"
+                    title={isLoggedIn ? "Log Out" : "Account"}
+                  >
+                    {isLoggedIn ? (
+                      <LogOut size={20} className="text-red-500 dark:text-red-400" />
+                    ) : (
+                      <User size={20} className="text-gray-500 dark:text-gray-300" />
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

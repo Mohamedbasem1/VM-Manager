@@ -7,8 +7,10 @@ import DockerContainerList from '../components/DockerContainerList';
 import { Cpu, Plus, Activity, Server, HardDrive, MemoryStick, RefreshCw, ChevronRight, FileCode, Package, Box } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getVirtualMachines, getVirtualDisks } from '../services/qemuService';
+import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard: React.FC = () => {
+  const { user } = useAuth();
   const [systemStatus, setSystemStatus] = useState({
     totalVMs: 0,
     runningVMs: 0,
@@ -79,27 +81,31 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* System Status Panel */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-8">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 mb-8 border border-gray-200 dark:border-gray-700 transform transition-all duration-300 hover:shadow-2xl">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center">
-            <Server className="mr-2 text-indigo-600 dark:text-indigo-400" />
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-white">System Status</h2>
+            <div className="bg-gradient-to-r from-indigo-500 to-purple-500 p-2 rounded-lg shadow-md mr-3">
+              <Server className="text-white" size={22} />
+            </div>
+            <h2 className="text-xl font-bold text-gray-800 dark:text-white">System Status</h2>
           </div>
           <button 
             onClick={() => window.location.reload()} 
-            className="flex items-center text-sm text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400"
+            className="flex items-center px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition-colors shadow-sm hover:shadow-md"
           >
-            <RefreshCw size={14} className="mr-1" />
+            <RefreshCw size={16} className="mr-2" />
             Refresh
           </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* VM Status */}
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
-            <div className="flex items-center mb-2">
-              <Cpu className="text-blue-500 dark:text-blue-400 mr-2" size={18} />
-              <h3 className="text-sm font-medium text-blue-800 dark:text-blue-300">Virtual Machines</h3>
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-5 rounded-lg border border-blue-100 dark:border-blue-800 shadow-sm hover:shadow-md transition-all duration-300 transform hover:scale-[1.02]">
+            <div className="flex items-center mb-3">
+              <div className="bg-blue-500 bg-opacity-20 dark:bg-blue-500 dark:bg-opacity-30 p-2 rounded-md mr-3">
+                <Cpu className="text-blue-600 dark:text-blue-400" size={18} />
+              </div>
+              <h3 className="text-sm font-semibold text-blue-800 dark:text-blue-300">Virtual Machines</h3>
             </div>
             <div className="flex justify-between items-end">
               <div>
@@ -108,17 +114,19 @@ const Dashboard: React.FC = () => {
                   {systemStatus.runningVMs} running
                 </p>
               </div>
-              <Link to="/create" className="text-blue-600 dark:text-blue-400 hover:underline text-xs flex items-center">
-                Create VM <ChevronRight size={12} className="ml-1" />
+              <Link to="/create" className="text-blue-600 dark:text-blue-400 hover:underline text-xs flex items-center group">
+                Create VM <ChevronRight size={12} className="ml-1 transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
             </div>
           </div>
           
           {/* Disk Status */}
-          <div className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 p-4 rounded-lg border border-purple-100 dark:border-purple-800">
-            <div className="flex items-center mb-2">
-              <HardDrive className="text-purple-500 dark:text-purple-400 mr-2" size={18} />
-              <h3 className="text-sm font-medium text-purple-800 dark:text-purple-300">Virtual Disks</h3>
+          <div className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 p-5 rounded-lg border border-purple-100 dark:border-purple-800 shadow-sm hover:shadow-md transition-all duration-300 transform hover:scale-[1.02]">
+            <div className="flex items-center mb-3">
+              <div className="bg-purple-500 bg-opacity-20 dark:bg-purple-500 dark:bg-opacity-30 p-2 rounded-md mr-3">
+                <HardDrive className="text-purple-600 dark:text-purple-400" size={18} />
+              </div>
+              <h3 className="text-sm font-semibold text-purple-800 dark:text-purple-300">Virtual Disks</h3>
             </div>
             <div className="flex justify-between items-end">
               <div>
@@ -128,39 +136,45 @@ const Dashboard: React.FC = () => {
                   <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">GB total</span>
                 </div>
               </div>
-              <Link to="/create" className="text-purple-600 dark:text-purple-400 hover:underline text-xs flex items-center">
-                Create Disk <ChevronRight size={12} className="ml-1" />
+              <Link to="/create" className="text-purple-600 dark:text-purple-400 hover:underline text-xs flex items-center group">
+                Create Disk <ChevronRight size={12} className="ml-1 transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
             </div>
           </div>
           
           {/* Memory Status */}
-          <div className="bg-gradient-to-br from-green-50 to-teal-50 dark:from-green-900/20 dark:to-teal-900/20 p-4 rounded-lg border border-green-100 dark:border-green-800">
-            <div className="flex items-center mb-2">
-              <MemoryStick className="text-green-500 dark:text-green-400 mr-2" size={18} />
-              <h3 className="text-sm font-medium text-green-800 dark:text-green-300">Memory Usage</h3>
+          <div className="bg-gradient-to-br from-green-50 to-teal-50 dark:from-green-900/20 dark:to-teal-900/20 p-5 rounded-lg border border-green-100 dark:border-green-800 shadow-sm hover:shadow-md transition-all duration-300 transform hover:scale-[1.02]">
+            <div className="flex items-center mb-3">
+              <div className="bg-green-500 bg-opacity-20 dark:bg-green-500 dark:bg-opacity-30 p-2 rounded-md mr-3">
+                <MemoryStick className="text-green-600 dark:text-green-400" size={18} />
+              </div>
+              <h3 className="text-sm font-semibold text-green-800 dark:text-green-300">Memory Usage</h3>
             </div>
             <div className="flex justify-between items-end">
-              <div>
+              <div className="w-full">
                 <p className="text-sm font-medium text-gray-800 dark:text-white">System: <span className="font-bold">Good</span></p>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-2">
-                  <div className="bg-green-500 h-2 rounded-full" style={{ width: '35%' }}></div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-2 overflow-hidden">
+                  <div className="bg-gradient-to-r from-green-400 to-green-500 h-2 rounded-full" style={{ width: '35%' }}></div>
                 </div>
               </div>
             </div>
           </div>
           
           {/* QEMU Status */}
-          <div className="bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 p-4 rounded-lg border border-amber-100 dark:border-amber-800">
-            <div className="flex items-center mb-2">
-              <Activity className="text-amber-500 dark:text-amber-400 mr-2" size={18} />
-              <h3 className="text-sm font-medium text-amber-800 dark:text-amber-300">QEMU Status</h3>
+          <div className="bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 p-5 rounded-lg border border-amber-100 dark:border-amber-800 shadow-sm hover:shadow-md transition-all duration-300 transform hover:scale-[1.02]">
+            <div className="flex items-center mb-3">
+              <div className="bg-amber-500 bg-opacity-20 dark:bg-amber-500 dark:bg-opacity-30 p-2 rounded-md mr-3">
+                <Activity className="text-amber-600 dark:text-amber-400" size={18} />
+              </div>
+              <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-300">QEMU Status</h3>
             </div>
             <div className="flex items-end">
               <div>
                 <div className="flex items-center">
                   <span className={`inline-block h-2.5 w-2.5 rounded-full mr-2 ${
-                    systemStatus.qemuStatus === 'online' ? 'bg-green-500' : 'bg-red-500'
+                    systemStatus.qemuStatus === 'online' 
+                      ? 'bg-green-500 animate-pulse' 
+                      : 'bg-red-500'
                   }`}></span>
                   <p className="text-sm font-medium text-gray-800 dark:text-white">
                     {systemStatus.qemuStatus === 'online' ? 'Connected' : 'Disconnected'}
@@ -181,48 +195,48 @@ const Dashboard: React.FC = () => {
         <DiskList />
         
         {/* Docker Section */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden border border-gray-200 dark:border-gray-700 transform transition-all duration-300 hover:shadow-2xl">
           <div className="border-b border-gray-200 dark:border-gray-700">
             <div className="flex">
               <button
                 className={`flex-1 px-4 py-3 text-sm font-medium ${
                   dockerTab === 'dockerfiles'
-                    ? 'border-b-2 border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    ? 'border-b-2 border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/20'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                 } flex items-center justify-center transition-all duration-200`}
                 onClick={() => setDockerTab('dockerfiles')}
               >
-                <FileCode size={16} className="mr-2" />
+                <FileCode size={18} className="mr-2" />
                 Dockerfiles
               </button>
               
               <button
                 className={`flex-1 px-4 py-3 text-sm font-medium ${
                   dockerTab === 'images'
-                    ? 'border-b-2 border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    ? 'border-b-2 border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/20'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                 } flex items-center justify-center transition-all duration-200`}
                 onClick={() => setDockerTab('images')}
               >
-                <Package size={16} className="mr-2" />
+                <Package size={18} className="mr-2" />
                 Docker Images
               </button>
               
               <button
                 className={`flex-1 px-4 py-3 text-sm font-medium ${
                   dockerTab === 'containers'
-                    ? 'border-b-2 border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    ? 'border-b-2 border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/20'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                 } flex items-center justify-center transition-all duration-200`}
                 onClick={() => setDockerTab('containers')}
               >
-                <Box size={16} className="mr-2" />
+                <Box size={18} className="mr-2" />
                 Docker Containers
               </button>
             </div>
           </div>
           
-          <div>
+          <div className="p-0">
             {dockerTab === 'dockerfiles' && <DockerfileList />}
             {dockerTab === 'images' && <DockerImageList />}
             {dockerTab === 'containers' && <DockerContainerList />}
