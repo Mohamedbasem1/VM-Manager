@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Monitor, List, Moon, Sun, X, Settings, Info, HardDrive, CpuIcon, Command, Grid, Home, Bell, User, LayoutDashboard } from 'lucide-react';
+import { Monitor, List, Moon, Sun, X, Settings, Info, HardDrive, CpuIcon, Command, Grid, Home, Bell, User, LayoutDashboard, Package } from 'lucide-react';
 
 const Header: React.FC = () => {
   const location = useLocation();
@@ -35,6 +35,7 @@ const Header: React.FC = () => {
     { name: 'Home', path: '/', icon: <Home size={16} className="mr-2" /> },
     { name: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={16} className="mr-2" /> },
     { name: 'Create', path: '/create', icon: <Command size={16} className="mr-2" /> },
+    { name: 'Docker', path: '/create?tab=docker', icon: <Package size={16} className="mr-2" /> },
   ];
 
   return (

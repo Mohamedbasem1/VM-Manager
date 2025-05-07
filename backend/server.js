@@ -3,6 +3,7 @@ const cors = require('cors');
 const { exec, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os'); // Added for Docker functionality
 
 // Initialize express app
 const app = express();
@@ -16,6 +17,8 @@ const VM_DATA_FILE = path.join(VM_DATA_PATH, 'vms.json');
 const DISK_INFO_FILE = path.join(VM_DATA_PATH, 'disk_info.json');
 // Path to store ISO files
 const isosDir = path.join(__dirname, 'isos');
+// Path to store Dockerfiles
+const dockerfilesDir = path.join(__dirname, 'dockerfiles');
 
 // Ensure data directory exists
 if (!fs.existsSync(VM_DATA_PATH)) {
@@ -27,6 +30,12 @@ if (!fs.existsSync(VM_DATA_PATH)) {
 if (!fs.existsSync(isosDir)) {
   fs.mkdirSync(isosDir, { recursive: true });
   console.log('Created ISOs directory:', isosDir);
+}
+
+// Ensure Dockerfiles directory exists
+if (!fs.existsSync(dockerfilesDir)) {
+  fs.mkdirSync(dockerfilesDir, { recursive: true });
+  console.log('Created dockerfiles directory:', dockerfilesDir);
 }
 
 // Middleware
@@ -316,6 +325,16 @@ app.put('/api/disks/:name/:format/resize', (req, res) => {
     
     // Ensure size has the 'G' suffix
     const sizeWithUnit = size.toString().endsWith('G') ? size : `${size}G`;
+    const sizeInMB = parseInt(sizeWithUnit) * 1024;
+    const currentSizeInMB = parseInt(diskInfo[sanitizedName]?.size) * 1024;
+
+    // Update the error message to provide more clarity when the new size is less than the current size
+    if (sizeInMB < currentSizeInMB) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Cannot resize disk to ${sizeInMB}MB because it is less than the current size of ${currentSizeInMB}MB. Disk size can only be increased.` 
+      });
+    }
     
     // Build the QEMU command with explicit path to qemu-img
     const qemuImgPath = path.join(QEMU_PATH, 'qemu-img.exe');
@@ -833,6 +852,381 @@ app.delete('/api/vms/:id', (req, res) => {
   vms.splice(idx, 1);
   saveVMData();
   res.json({ success: true, message: 'VM deleted' });
+});
+
+// Docker functionality
+
+// API endpoint to create Dockerfile
+app.post('/api/dockerfile', (req, res) => {
+  try {
+    const { name, content, directory } = req.body;
+    
+    if (!name || !content) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name and content are required for Dockerfile creation'
+      });
+    }
+    
+    // Determine directory to save in (use provided directory or default)
+    let saveDir = dockerfilesDir;
+    if (directory) {
+      // Validate the directory path to prevent path traversal
+      const normalizedPath = path.normalize(directory);
+      if (normalizedPath.includes('..')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid directory path'
+        });
+      }
+      
+      saveDir = normalizedPath;
+      // Create directory if it doesn't exist
+      if (!fs.existsSync(saveDir)) {
+        fs.mkdirSync(saveDir, { recursive: true });
+      }
+    }
+    
+    // Sanitize name to prevent command injection and add 'Dockerfile' prefix if needed
+    const sanitizedName = name.replace(/[^a-zA-Z0-9-_.]/g, '');
+    const fileName = sanitizedName.toLowerCase().endsWith('dockerfile') 
+      ? sanitizedName 
+      : `Dockerfile.${sanitizedName}`;
+    
+    const filePath = path.join(saveDir, fileName);
+    
+    // Check if file already exists
+    if (fs.existsSync(filePath)) {
+      return res.status(409).json({
+        success: false,
+        message: 'A Dockerfile with this name already exists'
+      });
+    }
+    
+    // Write the Dockerfile content
+    fs.writeFileSync(filePath, content, 'utf8');
+    
+    console.log(`Dockerfile created successfully: ${filePath}`);
+    
+    res.status(201).json({
+      success: true,
+      message: 'Dockerfile created successfully',
+      dockerfile: {
+        name: fileName,
+        path: filePath,
+        content: content,
+        createdAt: new Date().toISOString()
+      }
+    });
+  } catch (err) {
+    console.error('Error creating Dockerfile:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create Dockerfile',
+      error: err.message
+    });
+  }
+});
+
+// API endpoint to list all Dockerfiles
+app.get('/api/dockerfiles', (req, res) => {
+  try {
+    // Read the dockerfiles directory
+    fs.readdir(dockerfilesDir, (err, files) => {
+      if (err) {
+        console.error(`Error reading dockerfiles directory: ${err.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to read dockerfiles directory',
+          error: err.message
+        });
+      }
+      
+      // Filter for Dockerfile files
+      const dockerfiles = files.filter(file => 
+        file === 'Dockerfile' || file.startsWith('Dockerfile.') || file.endsWith('.dockerfile')
+      );
+      
+      // Create array of Dockerfiles with details
+      const dockerfilesList = dockerfiles.map(file => {
+        const filePath = path.join(dockerfilesDir, file);
+        const stats = fs.statSync(filePath);
+        const content = fs.readFileSync(filePath, 'utf8');
+        
+        return {
+          name: file,
+          path: filePath,
+          content: content,
+          createdAt: stats.birthtime || stats.ctime,
+          size: stats.size
+        };
+      });
+      
+      res.status(200).json({
+        success: true,
+        dockerfiles: dockerfilesList
+      });
+    });
+  } catch (err) {
+    console.error('Error listing Dockerfiles:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to list Dockerfiles',
+      error: err.message
+    });
+  }
+});
+
+// API endpoint to build Docker image
+app.post('/api/docker/build', (req, res) => {
+  try {
+    const { dockerfile, tag } = req.body;
+    
+    if (!dockerfile || !tag) {
+      return res.status(400).json({
+        success: false,
+        message: 'Dockerfile path and image tag are required'
+      });
+    }
+    
+    // Validate the dockerfile path
+    if (!fs.existsSync(dockerfile)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dockerfile not found at the specified path'
+      });
+    }
+    
+    // Get directory of Dockerfile
+    const dockerfileDir = path.dirname(dockerfile);
+    
+    // Build the Docker command
+    const command = `docker build -t ${tag} -f "${dockerfile}" "${dockerfileDir}"`;
+    
+    console.log(`Executing Docker build command: ${command}`);
+    
+    // Execute the command
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Error building Docker image: ${error.message}`);
+        console.error(`stderr: ${stderr}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to build Docker image',
+          error: error.message,
+          details: stderr
+        });
+      }
+      
+      console.log(`Docker image built successfully: ${tag}`);
+      console.log(`Command stdout: ${stdout}`);
+      
+      res.status(200).json({
+        success: true,
+        message: 'Docker image built successfully',
+        tag: tag,
+        output: stdout,
+        warnings: stderr
+      });
+    });
+  } catch (err) {
+    console.error('Error building Docker image:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to build Docker image',
+      error: err.message
+    });
+  }
+});
+
+// API endpoint to list Docker images
+app.get('/api/docker/images', (req, res) => {
+  try {
+    // Execute Docker command to list images
+    exec('docker image ls --format "{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}} {{.CreatedSince}}"', (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Error listing Docker images: ${error.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to list Docker images',
+          error: error.message
+        });
+      }
+      
+      const images = stdout.trim().split('\n')
+        .filter(line => line.trim() !== '')
+        .map(line => {
+          const [tag, id, size, created] = line.split(' ');
+          const [repository, imageTag] = tag.split(':');
+          
+          return {
+            repository: repository || '<none>',
+            tag: imageTag || '<none>',
+            id: id,
+            size: size,
+            created: created
+          };
+        });
+      
+      res.status(200).json({
+        success: true,
+        images: images
+      });
+    });
+  } catch (err) {
+    console.error('Error listing Docker images:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to list Docker images',
+      error: err.message
+    });
+  }
+});
+
+// API endpoint to list Docker containers
+app.get('/api/docker/containers', (req, res) => {
+  try {
+    // Execute Docker command to list containers
+    exec('docker ps --format "{{.ID}}|{{.Image}}|{{.Command}}|{{.Status}}|{{.Ports}}|{{.Names}}"', (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Error listing Docker containers: ${error.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to list Docker containers',
+          error: error.message
+        });
+      }
+      
+      const containers = stdout.trim().split('\n')
+        .filter(line => line.trim() !== '')
+        .map(line => {
+          const [id, image, command, status, ports, name] = line.split('|');
+          
+          return {
+            id,
+            image,
+            command,
+            status,
+            ports,
+            name
+          };
+        });
+      
+      res.status(200).json({
+        success: true,
+        containers: containers
+      });
+    });
+  } catch (err) {
+    console.error('Error listing Docker containers:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to list Docker containers',
+      error: err.message
+    });
+  }
+});
+
+// API endpoint to stop a Docker container
+app.post('/api/docker/containers/:id/stop', (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Container ID is required'
+      });
+    }
+    
+    // Execute Docker command to stop container
+    exec(`docker stop ${id}`, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Error stopping Docker container: ${error.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to stop Docker container',
+          error: error.message
+        });
+      }
+      
+      console.log(`Docker container stopped successfully: ${id}`);
+      
+      res.status(200).json({
+        success: true,
+        message: 'Docker container stopped successfully',
+        containerId: id
+      });
+    });
+  } catch (err) {
+    console.error('Error stopping Docker container:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to stop Docker container',
+      error: err.message
+    });
+  }
+});
+
+// API endpoint to run a Docker container
+app.post('/api/docker/containers/run', (req, res) => {
+  try {
+    const { image, name, ports } = req.body;
+    
+    if (!image) {
+      return res.status(400).json({
+        success: false,
+        message: 'Image name is required'
+      });
+    }
+    
+    // Build the Docker command
+    let command = `docker run -d`;
+    
+    // Add name parameter if provided
+    if (name) {
+      command += ` --name ${name}`;
+    }
+    
+    // Add port mapping if provided
+    if (ports) {
+      command += ` -p ${ports}`;
+    }
+    
+    // Add the image name
+    command += ` ${image}`;
+    
+    console.log(`Executing Docker run command: ${command}`);
+    
+    // Execute the command
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Error running Docker container: ${error.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to run Docker container',
+          error: error.message,
+          details: stderr
+        });
+      }
+      
+      const containerId = stdout.trim();
+      console.log(`Docker container started with ID: ${containerId}`);
+      
+      res.status(200).json({
+        success: true,
+        message: 'Docker container started successfully',
+        containerId: containerId
+      });
+    });
+  } catch (err) {
+    console.error('Error running Docker container:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to run Docker container',
+      error: err.message
+    });
+  }
 });
 
 // Start the server

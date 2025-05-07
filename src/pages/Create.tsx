@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import DiskCreationForm from '../components/DiskCreationForm';
 import VMCreationForm from '../components/VMCreationForm';
-import { HardDrive, Cpu, ChevronRight, Info } from 'lucide-react';
+import DockerfileCreationForm from '../components/DockerfileCreationForm';
+import DockerImageList from '../components/DockerImageList';
+import DockerContainerList from '../components/DockerContainerList';
+import { HardDrive, Cpu, ChevronRight, Info, FileCode, Package, Box } from 'lucide-react';
 
 const Create: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('disk');
   const [refreshVMForm, setRefreshVMForm] = useState<number>(0);
+  const [refreshDockerForm, setRefreshDockerForm] = useState<number>(0);
   const [showGuide, setShowGuide] = useState(true);
+  const [dockerSubTab, setDockerSubTab] = useState<'dockerfile' | 'images' | 'containers'>('dockerfile');
 
   const handleDiskCreated = () => {
     // Trigger a refresh of the VM form to show the new disk
@@ -17,12 +22,27 @@ const Create: React.FC = () => {
     }, 1000);
   };
 
+  const handleDockerfileCreated = () => {
+    // Trigger a refresh of Docker components
+    setRefreshDockerForm(prev => prev + 1);
+    // Automatically switch to images tab after Dockerfile is created
+    setTimeout(() => {
+      setDockerSubTab('images');
+    }, 1000);
+  };
+
   // For direct navigation to specific tab via URL parameters
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab');
     if (tab === 'vm') {
       setActiveTab('vm');
+    } else if (tab === 'docker') {
+      setActiveTab('docker');
+      const subTab = params.get('subTab');
+      if (subTab === 'images') {
+        setDockerSubTab('images');
+      }
     }
   }, []);
 
@@ -75,6 +95,17 @@ const Create: React.FC = () => {
             <Cpu size={16} className="mr-2" />
             Virtual Machine
           </button>
+          <button
+            className={`flex-1 px-4 py-3 text-sm font-medium ${
+              activeTab === 'docker'
+                ? 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400 bg-green-50 dark:bg-green-900/10'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+            } flex items-center justify-center transition-all duration-200`}
+            onClick={() => setActiveTab('docker')}
+          >
+            <Package size={16} className="mr-2" />
+            Docker
+          </button>
         </div>
         
         {/* Tab content */}
@@ -88,6 +119,58 @@ const Create: React.FC = () => {
           
           {activeTab === 'vm' && (
             <VMCreationForm key={refreshVMForm} onVMCreated={() => {}} />
+          )}
+
+          {activeTab === 'docker' && (
+            <div>
+              <div className="flex mb-4">
+                <button
+                  className={`flex-1 px-4 py-2 text-sm font-medium ${
+                    dockerSubTab === 'dockerfile'
+                      ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/10'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                  } flex items-center justify-center transition-all duration-200`}
+                  onClick={() => setDockerSubTab('dockerfile')}
+                >
+                  <FileCode size={16} className="mr-2" />
+                  Dockerfile
+                </button>
+                <button
+                  className={`flex-1 px-4 py-2 text-sm font-medium ${
+                    dockerSubTab === 'images'
+                      ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-600 dark:border-purple-400 bg-purple-50 dark:bg-purple-900/10'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                  } flex items-center justify-center transition-all duration-200`}
+                  onClick={() => setDockerSubTab('images')}
+                >
+                  <Package size={16} className="mr-2" />
+                  Images
+                </button>
+                <button
+                  className={`flex-1 px-4 py-2 text-sm font-medium ${
+                    dockerSubTab === 'containers'
+                      ? 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400 bg-green-50 dark:bg-green-900/10'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                  } flex items-center justify-center transition-all duration-200`}
+                  onClick={() => setDockerSubTab('containers')}
+                >
+                  <Box size={16} className="mr-2" />
+                  Containers
+                </button>
+              </div>
+              {dockerSubTab === 'dockerfile' && (
+                <DockerfileCreationForm 
+                  key={refreshDockerForm} 
+                  onDockerfileCreated={handleDockerfileCreated} 
+                />
+              )}
+              {dockerSubTab === 'images' && (
+                <DockerImageList key={refreshDockerForm} />
+              )}
+              {dockerSubTab === 'containers' && (
+                <DockerContainerList key={refreshDockerForm} />
+              )}
+            </div>
           )}
         </div>
         
@@ -108,6 +191,15 @@ const Create: React.FC = () => {
               className="ml-auto px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-md transition-colors flex items-center"
             >
               Continue to VM Creation <ChevronRight size={16} className="ml-1" />
+            </button>
+          )}
+
+          {activeTab === 'docker' && dockerSubTab === 'images' && (
+            <button
+              onClick={() => setDockerSubTab('dockerfile')}
+              className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-300 dark:border-gray-600 rounded-md transition-colors"
+            >
+              Back to Dockerfile Creation
             </button>
           )}
         </div>

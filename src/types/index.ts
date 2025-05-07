@@ -52,3 +52,28 @@ export interface VMUpdateParams {
   networkType?: 'bridged' | 'nat' | 'host-only';
   qemuConnection?: QEMUConnection;
 }
+
+export interface Dockerfile {
+  name: string;
+  path: string;
+  content: string;
+  createdAt: string;
+  size?: number;
+}
+
+export interface DockerImage {
+  repository: string;
+  tag: string;
+  id: string;
+  size: string;
+  created: string;
+}
+
+export interface DockerContainer {
+  id: string;
+  image: string;
+  command: string;
+  status: string;
+  ports: string;
+  name: string;
+}

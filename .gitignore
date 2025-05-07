@@ -29,14 +29,19 @@ backend/disks/*.raw
 backend/disks/*.qcow2
 backend/disks/*.vdi
 backend/disks/*.vmdk
+backend/disks/*.img
 
 # ISO files and VM start batch files
 backend/isos/
 backend/isos/**
 backend/start_vm_*.bat
+backend/qemu_error.log
 
-# Data files that should be backed up separately
-backend/data/*.json
+# Docker build files
+backend/dockerfiles/
+
+# Data files - Uncomment if you want to save and track changes
+# backend/data/*.json
 
 # Editor directories and files
 .vscode/*
@@ -51,10 +56,15 @@ backend/data/*.json
 *.njsproj
 *.sln
 *.sw?
+.history/
+*.sublime-workspace
 
 # Testing
 coverage/
 .nyc_output/
+__tests__/**/coverage/
+junit.xml
+test-report.xml
 
 # Misc
 .cache/
@@ -62,6 +72,9 @@ coverage/
 .tmp/
 temp/
 tmp/
+.firebase/
+.eslintcache
+.stylelintcache
 
 # System files
 Thumbs.db
@@ -69,3 +82,16 @@ ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 .directory
+
+# Compiled output
+*.min.js
+*.min.css
+
+# Package managers
+npm-debug.log
+yarn-error.log
+.pnpm-debug.log
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.pnp.*
