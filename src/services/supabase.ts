@@ -2,8 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 
 // Supabase configuration
 // Using real Supabase URL instead of placeholder to resolve the ERR_NAME_NOT_RESOLVED error
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://oxbfbeauoqgkswxzeyop.supabase.co';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94YmZiZWF1b3Fna3N3eHpleW9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY2NDk1MjYsImV4cCI6MjA2MjIyNTUyNn0.wSZW90zvnk5NFHcShe5bt-5_5GoUjeqDhibxOAlnApg';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Create a single supabase client for the entire app
 export const supabase = createClient(supabaseUrl, supabaseKey);
