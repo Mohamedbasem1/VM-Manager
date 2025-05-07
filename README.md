@@ -1,4 +1,4 @@
-# QEMU VM Manager
+#  VM Manager
 
 ![QEMU VM Manager](https://img.shields.io/badge/QEMU-VM%20Manager-purple)
 ![React](https://img.shields.io/badge/React-18.3.1-blue)
