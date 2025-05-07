@@ -13,8 +13,7 @@ const PORT = 5002; // Changed from 5001 to 5002 to avoid conflicts
 const QEMU_PATH = 'C:\\msys64\\ucrt64\\bin';
 // Path to store VM data
 const VM_DATA_PATH = path.join(__dirname, 'data');
-const VM_DATA_FILE = path.join(VM_DATA_PATH, 'vms.json');
-const DISK_INFO_FILE = path.join(VM_DATA_PATH, 'disk_info.json');
+
 // Path to store ISO files
 const isosDir = path.join(__dirname, 'isos');
 // Path to store Dockerfiles
@@ -61,75 +60,27 @@ function isValidFormat(format) {
   return validFormats.includes(format);
 }
 
-// Load VM data from file
-function loadVMData() {
-  if (fs.existsSync(VM_DATA_FILE)) {
-    try {
-      const data = fs.readFileSync(VM_DATA_FILE, 'utf-8');
-      return JSON.parse(data);
-    } catch (err) {
-      console.error('Failed to load VM data:', err);
-    }
-  }
-  return [];
-}
-
-// Save VM data to file
-function saveVMData() {
-  try {
-    fs.writeFileSync(VM_DATA_FILE, JSON.stringify(vms, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('Failed to save VM data:', err);
-  }
-}
-
-// Load disk info from file
-function loadDiskInfo() {
-  if (fs.existsSync(DISK_INFO_FILE)) {
-    try {
-      const data = fs.readFileSync(DISK_INFO_FILE, 'utf-8');
-      return JSON.parse(data);
-    } catch (err) {
-      console.error('Failed to load disk info:', err);
-    }
-  }
-  return {};
-}
-
-// Save disk info to file
-function saveDiskInfo() {
-  try {
-    fs.writeFileSync(DISK_INFO_FILE, JSON.stringify(diskInfo, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('Failed to save disk info:', err);
-  }
-}
-
-// In-memory VM store (replace with DB for production)
-let vms = loadVMData();
-let vmIdCounter = vms.length > 0 ? Math.max(...vms.map(vm => parseInt(vm.id))) + 1 : 1;
-
-// In-memory disk info store
-let diskInfo = loadDiskInfo();
-
 // In-memory ISO info store
 let isoInfo = {};
-
-// Helper: Find VM by ID
-function findVM(id) {
-  return vms.find(vm => vm.id === id);
-}
 
 // API endpoint to create a disk
 app.post('/api/create-disk', (req, res) => {
   try {
-    const { diskName, size, format } = req.body;
+    const { diskName, size, format, user_id } = req.body;
     
     // Validate input
     if (!diskName || !size || !format) {
       return res.status(400).json({ 
         success: false, 
         message: 'Missing required parameters: diskName, size, and format are required' 
+      });
+    }
+
+    // Ensure we have a user_id
+    if (!user_id) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'User ID is required to create a disk' 
       });
     }
     
@@ -184,21 +135,20 @@ app.post('/api/create-disk', (req, res) => {
       // Update disk info - ensure we consistently store the size with 'G' suffix
       const sizeWithUnit = size.toString().endsWith('G') ? size : `${size}G`;
       
-      // Store disk info with explicit creation date
-      diskInfo[sanitizedDiskName] = {
+      // Return success response with the disk information
+      const diskData = {
         name: sanitizedDiskName,
         format,
         path: diskPath,
         size: sizeWithUnit,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        user_id: user_id
       };
-      saveDiskInfo();
       
-      // Return success response with the disk information
       res.status(201).json({
         success: true,
         message: 'Disk created successfully',
-        disk: diskInfo[sanitizedDiskName]
+        disk: diskData
       });
     });
     
@@ -215,6 +165,16 @@ app.post('/api/create-disk', (req, res) => {
 // API endpoint to get all disks
 app.get('/api/disks', (req, res) => {
   try {
+    // Get user_id from query parameter
+    const userId = req.query.user_id;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required to retrieve disks'
+      });
+    }
+    
     // Read the disks directory
     fs.readdir(disksDir, (err, files) => {
       if (err) {
@@ -232,45 +192,11 @@ app.get('/api/disks', (req, res) => {
         return isValidFormat(ext);
       });
       
-      // Create array of disks with stored info
-      const disks = diskFiles.map(file => {
-        const ext = path.extname(file).slice(1);
-        const name = path.basename(file, `.${ext}`);
-        const filePath = path.join(disksDir, file);
-        const stats = fs.statSync(filePath);
-        
-        // Use stored info if available, otherwise create default
-        if (diskInfo[name]) {
-          return {
-            name,
-            format: ext,
-            path: filePath,
-            size: diskInfo[name].size,
-            createdAt: diskInfo[name].createdAt || stats.birthtime
-          };
-        } else {
-          // For disks without stored info, create default and store it
-          const newDiskInfo = {
-            name,
-            format: ext,
-            path: filePath,
-            size: '1G', // Default size
-            createdAt: stats.birthtime
-          };
-          
-          // Store this disk info for future use
-          diskInfo[name] = newDiskInfo;
-          
-          return newDiskInfo;
-        }
-      });
-      
-      // Save updated disk info
-      saveDiskInfo();
-      
+      // We'll return an empty array as we're relying on Supabase for disk info
+      // The frontend will fetch disk data from Supabase instead
       res.status(200).json({
         success: true,
-        disks
+        disks: []
       });
     });
   } catch (err) {
@@ -325,16 +251,6 @@ app.put('/api/disks/:name/:format/resize', (req, res) => {
     
     // Ensure size has the 'G' suffix
     const sizeWithUnit = size.toString().endsWith('G') ? size : `${size}G`;
-    const sizeInMB = parseInt(sizeWithUnit) * 1024;
-    const currentSizeInMB = parseInt(diskInfo[sanitizedName]?.size) * 1024;
-
-    // Update the error message to provide more clarity when the new size is less than the current size
-    if (sizeInMB < currentSizeInMB) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Cannot resize disk to ${sizeInMB}MB because it is less than the current size of ${currentSizeInMB}MB. Disk size can only be increased.` 
-      });
-    }
     
     // Build the QEMU command with explicit path to qemu-img
     const qemuImgPath = path.join(QEMU_PATH, 'qemu-img.exe');
@@ -360,12 +276,6 @@ app.put('/api/disks/:name/:format/resize', (req, res) => {
       console.log(`Disk resized successfully: ${diskPath}`);
       console.log(`Command stdout: ${stdout}`);
       
-      // Update disk info
-      if (diskInfo[sanitizedName]) {
-        diskInfo[sanitizedName].size = sizeWithUnit;
-        saveDiskInfo();
-      }
-      
       // Get updated disk info
       const stats = fs.statSync(diskPath);
       
@@ -375,31 +285,14 @@ app.put('/api/disks/:name/:format/resize', (req, res) => {
         format,
         path: diskPath,
         size: sizeWithUnit,
-        createdAt: diskInfo[sanitizedName]?.createdAt || stats.birthtime
+        createdAt: new Date().toISOString()
       };
-      
-      // Update the disk information in all VMs that use this disk
-      let vmsUpdated = 0;
-      vms.forEach(vm => {
-        if (vm.disk && vm.disk.name === sanitizedName && vm.disk.format === format) {
-          // Update the disk info in this VM
-          vm.disk = { ...updatedDisk, id: `disk_${sanitizedName}_${format}` };
-          vmsUpdated++;
-        }
-      });
-      
-      // Save VM data if any VMs were updated
-      if (vmsUpdated > 0) {
-        console.log(`Updated disk information in ${vmsUpdated} VMs`);
-        saveVMData();
-      }
       
       // Return success response with the disk information
       res.status(200).json({
         success: true,
-        message: `Disk resized successfully. Updated in ${vmsUpdated} VMs.`,
-        disk: updatedDisk,
-        vmsUpdated
+        message: `Disk resized successfully.`,
+        disk: updatedDisk
       });
     });
     
@@ -445,10 +338,6 @@ app.delete('/api/disks/:name/:format', (req, res) => {
     
     // Delete the disk
     fs.unlinkSync(diskPath);
-    
-    // Remove disk info
-    delete diskInfo[sanitizedName];
-    saveDiskInfo();
     
     res.status(200).json({
       success: true,
@@ -675,42 +564,35 @@ app.post('/api/create-vm', (req, res) => {
     });
   }
 
-  const id = (vmIdCounter++).toString();
+  // Create unique ID for the VM (will be stored in Supabase by frontend)
+  const id = Date.now().toString();
+  
+  // Return the newly created VM without storing it locally
   const newVM = {
     id, name, cpuCores, memory, disk, iso,
     status: 'stopped', createdAt: new Date(), lastStarted: null
   };
-  vms.push(newVM);
-  saveVMData();
 
-  // Return the newly created VM without starting it
   res.status(201).json({ success: true, vm: newVM });
 });
 
 // List VMs
 app.get('/api/vms', (req, res) => {
-  res.json({ success: true, vms });
+  // Return empty array, as we'll rely on Supabase for VM data
+  res.json({ success: true, vms: [] });
 });
 
 // Get single VM
 app.get('/api/vms/:id', (req, res) => {
-  const vm = findVM(req.params.id);
-  if (!vm) return res.status(404).json({ success: false, message: 'VM not found' });
-  res.json({ success: true, vm });
+  // The frontend should fetch VM data from Supabase
+  res.status(404).json({ success: false, message: 'VM not found in local storage. Use Supabase data.' });
 });
 
 // Start VM 
 app.post('/api/vms/:id/start', (req, res) => {
-  const vm = vms.find(vm => vm.id === req.params.id);
-  if (!vm) return res.status(404).json({ success: false, message: 'VM not found' });
-  if (vm.status === 'running') {
-    // Reset status to stopped first to allow restarting
-    vm.status = 'stopped';
-    saveVMData();
-  }
-
-  // Check if the virtual disk exists
-  if (!vm.disk || !vm.disk.path) {
+  const { id, name, cpuCores, memory, disk, iso, status } = req.body;
+  
+  if (!disk || !disk.path) {
     return res.status(400).json({ 
       success: false, 
       message: 'No virtual disk associated with this VM' 
@@ -718,16 +600,16 @@ app.post('/api/vms/:id/start', (req, res) => {
   }
 
   // Check if the disk file exists
-  if (!fs.existsSync(vm.disk.path)) {
-    console.error(`Disk file not found: ${vm.disk.path}`);
+  if (!fs.existsSync(disk.path)) {
+    console.error(`Disk file not found: ${disk.path}`);
     return res.status(400).json({ 
       success: false, 
-      message: `Virtual disk not found: ${vm.disk.name}. The disk file may have been deleted or moved.` 
+      message: `Virtual disk not found: ${disk.name}. The disk file may have been deleted or moved.` 
     });
   }
 
   // Check if ISO exists and has a valid path
-  if (!vm.iso || !vm.iso.path) {
+  if (!iso || !iso.path) {
     return res.status(400).json({ 
       success: false, 
       message: 'No ISO file associated with this VM' 
@@ -735,27 +617,27 @@ app.post('/api/vms/:id/start', (req, res) => {
   }
 
   // Check if the ISO file exists on disk
-  if (!fs.existsSync(vm.iso.path)) {
-    console.error(`ISO file not found: ${vm.iso.path}`);
+  if (!fs.existsSync(iso.path)) {
+    console.error(`ISO file not found: ${iso.path}`);
     return res.status(400).json({ 
       success: false, 
-      message: `ISO file not found: ${vm.iso.name}. Please verify that the ISO file exists at this location.` 
+      message: `ISO file not found: ${iso.name}. Please verify that the ISO file exists at this location.` 
     });
   }
 
   const qemuSystemPath = path.join(QEMU_PATH, 'qemu-system-x86_64.exe');
   
   // Create a batch file to execute QEMU with proper parameters
-  const batchFilePath = path.join(__dirname, `start_vm_${vm.id}.bat`);
+  const batchFilePath = path.join(__dirname, `start_vm_${id}.bat`);
   const qemuCommand = [
     `@echo off`,
-    `echo Starting QEMU VM: ${vm.name}`,
+    `echo Starting QEMU VM: ${name}`,
     `echo.`,
     `"${qemuSystemPath}" ^`,
-    `-m ${vm.memory} ^`,
-    `-smp ${vm.cpuCores} ^`,
-    `-hda "${vm.disk.path}" ^`,
-    `-cdrom "${vm.iso && vm.iso.path ? vm.iso.path : ''}" ^`,
+    `-m ${memory} ^`,
+    `-smp ${cpuCores} ^`,
+    `-hda "${disk.path}" ^`,
+    `-cdrom "${iso && iso.path ? iso.path : ''}" ^`,
     `-boot menu=on ^`,
     `-display sdl ^`,
     `-no-reboot ^`,
@@ -784,10 +666,15 @@ app.post('/api/vms/:id/start', (req, res) => {
     });
     
     child.unref();
-    vm.status = 'running';
-    vm.lastStarted = new Date();
-    saveVMData();
-    res.json({ success: true, message: 'VM started successfully', vm });
+    
+    // Return VM with running status - Supabase will be updated by the frontend
+    const updatedVM = {
+      id, name, cpuCores, memory, disk, iso,
+      status: 'running', 
+      lastStarted: new Date()
+    };
+    
+    res.json({ success: true, message: 'VM started successfully', vm: updatedVM });
   } catch (err) {
     console.error('QEMU spawn exception:', err);
     fs.appendFileSync('qemu_error.log', `QEMU exception: ${err.message}\n`);
@@ -797,9 +684,7 @@ app.post('/api/vms/:id/start', (req, res) => {
 
 // Stop VM (actually terminate the QEMU process)
 app.post('/api/vms/:id/stop', (req, res) => {
-  const vm = findVM(req.params.id);
-  if (!vm) return res.status(404).json({ success: false, message: 'VM not found' });
-  if (vm.status !== 'running') return res.json({ success: true, message: 'VM already stopped' });
+  const { id, name, cpuCores, memory, disk, iso } = req.body;
   
   // On Windows, we need to find and kill the qemu-system process
   // Get a list of processes that match our VM
@@ -826,31 +711,33 @@ app.post('/api/vms/:id/stop', (req, res) => {
       }
       
       console.log('QEMU processes stopped successfully');
-      vm.status = 'stopped';
-      saveVMData();
-      res.json({ success: true, message: 'VM stopped', vm });
+      
+      // Return VM with stopped status - Supabase will be updated by the frontend
+      const updatedVM = {
+        id, name, cpuCores, memory, disk, iso,
+        status: 'stopped'
+      };
+      
+      res.json({ success: true, message: 'VM stopped', vm: updatedVM });
     });
   });
 });
 
 // Edit VM
 app.put('/api/vms/:id', (req, res) => {
-  const vm = findVM(req.params.id);
-  if (!vm) return res.status(404).json({ success: false, message: 'VM not found' });
-  const { name, cpuCores, memory } = req.body;
-  if (name) vm.name = name;
-  if (cpuCores) vm.cpuCores = cpuCores;
-  if (memory) vm.memory = memory;
-  saveVMData();
-  res.json({ success: true, vm });
+  const { id } = req.params;
+  const { name, cpuCores, memory, disk, iso, status } = req.body;
+  
+  // Return the updated VM - Supabase will be updated by the frontend
+  const updatedVM = { id, name, cpuCores, memory, disk, iso, status };
+  
+  res.json({ success: true, vm: updatedVM });
 });
 
 // Delete VM
 app.delete('/api/vms/:id', (req, res) => {
-  const idx = vms.findIndex(vm => vm.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ success: false, message: 'VM not found' });
-  vms.splice(idx, 1);
-  saveVMData();
+  // No local data to delete, just return success
+  // The frontend will handle removing the VM from Supabase
   res.json({ success: true, message: 'VM deleted' });
 });
 

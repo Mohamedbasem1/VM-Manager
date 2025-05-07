@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createVirtualMachine, getVirtualDisks, getISOs, uploadISO, registerISOPath } from '../services/qemuService';
 import { VirtualDisk, ISO } from '../types';
-import { Cpu, MemoryStick as Memory, Check, Upload, Info, AlertCircle } from 'lucide-react';
+import { Cpu, Check, Upload, Info, AlertCircle } from 'lucide-react';
 import { notify } from './NotificationsContainer';
 import path from 'path';
 
@@ -74,35 +74,44 @@ const VMCreationForm: React.FC<{ onVMCreated: () => void }> = ({ onVMCreated }) 
     setError(null);
     
     try {
-      let isoId = null;
+      let selectedIso: ISO | undefined;
       
       // Handle ISO selection
       if (useCustomIsoPath && customIsoPath) {
         try {
           // Register the custom ISO path with the server first
-          const customIso = await registerISOPath(
+          selectedIso = await registerISOPath(
             customIsoPath,
             customIsoName || path.basename(customIsoPath)
           );
-          isoId = customIso.id;
         } catch (err) {
           throw new Error(`Failed to register custom ISO: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
       } else if (selectedIsoId) {
-        isoId = selectedIsoId;
+        // Find the selected ISO object from the list of ISOs
+        selectedIso = isos.find(iso => iso.id === selectedIsoId);
+        if (!selectedIso) {
+          throw new Error('Selected ISO not found or invalid');
+        }
       } else {
         throw new Error('ISO file is required for VM creation');
       }
       
-      // Proceed with VM creation using the validated ISO
-      console.log(`Creating VM with disk ID: ${selectedDiskId} and ISO ID: ${isoId}`);
+      // Find the selected disk object instead of just using its ID
+      const selectedDisk = disks.find(disk => disk.id === selectedDiskId);
+      if (!selectedDisk) {
+        throw new Error('Selected disk not found or invalid');
+      }
+      
+      // Proceed with VM creation using the full disk and ISO objects
+      console.log(`Creating VM with disk: ${selectedDisk.name} and ISO: ${selectedIso.name}`);
       
       await createVirtualMachine(
         name,
         cpuCores,
         memory,
-        selectedDiskId,
-        isoId
+        selectedDisk,
+        selectedIso
       );
       
       setSuccess(true);

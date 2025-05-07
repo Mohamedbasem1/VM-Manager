@@ -1,10 +1,13 @@
 // QEMU VM Management Service
-import { VirtualMachine, VirtualDisk, ISO, Command, VMUpdateParams } from '../types';
+import { supabase } from './supabase';
+import { VirtualMachine, VirtualDisk, ISO, Command } from '../types';
 import { notify } from '../components/NotificationsContainer';
 
 const API_URL = 'http://localhost:5002'; // Updated to use port 5002
 
 // Helper function to handle API errors
+// This is kept for future use, so we silence the "unused" warning
+// @ts-expect-error - Function is kept for future use
 const handleApiError = (error: any, defaultMessage: string) => {
   console.error('API Error:', error);
   const errorMessage = error?.response?.data?.message || error?.message || defaultMessage;
@@ -12,351 +15,680 @@ const handleApiError = (error: any, defaultMessage: string) => {
   throw new Error(errorMessage);
 };
 
-// Get all virtual machines
-export const getVirtualMachines = async (): Promise<VirtualMachine[]> => {
-  try {
-    const response = await fetch(`${API_URL}/api/vms`);
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to fetch VMs');
-    }
-    
-    return data.vms;
-  } catch (error) {
-    return handleApiError(error, 'Failed to load virtual machines');
-  }
-};
-
-// Create a new virtual machine
-export const createVirtualMachine = async (
-  name: string,
-  cpuCores: number,
-  memory: number,
-  diskId: string,
-  isoId?: string
-): Promise<VirtualMachine> => {
-  try {
-    // First get the disk and ISO details
-    const disks = await getVirtualDisks();
-    const disk = disks.find(d => d.id === diskId);
-    
-    if (!disk) {
-      throw new Error('Selected disk not found');
-    }
-    
-    // Validate that ISO is provided
-    if (!isoId) {
-      throw new Error('ISO file is required for VM creation');
-    }
-    
-    let iso = undefined;
-    const isos = await getISOs();
-    iso = isos.find(i => i.id === isoId);
-    
-    // If we can't find the ISO by ID, try other methods
-    if (!iso) {
-      // Check for custom or uploaded ISOs with various prefixes
-      iso = isos.find(i => 
-        i.id.startsWith('custom-') || 
-        i.id.startsWith('upload_') || 
-        i.id.startsWith('default_')
-      );
+// QEMU service for managing virtual machines and disks with Supabase integration
+export const qemuService = {
+  /**
+   * Get all virtual machines
+   * Fetches data directly from Supabase
+   */
+  async getVirtualMachines(): Promise<VirtualMachine[]> {
+    try {
+      // Get current user first to determine which VMs to retrieve
+      const { data: { user } } = await supabase.auth.getUser();
       
-      // If still no ISO, use the default Ubuntu ISO if available
-      if (!iso) {
-        iso = isos.find(i => i.name.includes('ubuntu') && i.name.endsWith('.iso'));
+      if (!user) {
+        throw new Error('User not authenticated');
       }
       
-      // If still no ISO, just use the first one in the list
-      if (!iso && isos.length > 0) {
-        iso = isos[0];
-        console.log('Using first available ISO:', iso);
+      // Get VMs directly from Supabase
+      const { data: vmMetadata, error } = await supabase
+        .from('virtual_machines_metadata')
+        .select('*')
+        .eq('user_id', user.id);
+        
+      if (error) {
+        console.error('Error fetching VMs from Supabase:', error);
+        throw new Error('Failed to fetch virtual machines from Supabase');
       }
-    }
-    
-    if (!iso) {
-      throw new Error('No suitable ISO found. Please make sure you have a valid ISO file available.');
-    }
-    
-    console.log('Selected ISO:', iso);
-    
-    const postData: any = {
-      name,
-      cpuCores,
-      memory,
-      disk,
-      iso // Always include ISO as it's required
-    };
-    
-    console.log('Sending VM creation request with data:', postData);
-    
-    const response = await fetch(`${API_URL}/api/create-vm`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(postData),
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to create VM');
-    }
-    
-    notify('success', `Virtual machine "${name}" created successfully`);
-    return data.vm;
-  } catch (error) {
-    return handleApiError(error, 'Failed to create virtual machine');
-  }
-};
-
-// Start a virtual machine
-export const startVirtualMachine = async (id: string): Promise<VirtualMachine> => {
-  try {
-    const response = await fetch(`${API_URL}/api/vms/${id}/start`, {
-      method: 'POST',
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      // Check for specific missing disk error
-      if (data.message && (
-        data.message.includes('No virtual disk') || 
-        data.message.includes('Virtual disk not found') ||
-        data.message.includes('Disk file not found')
-      )) {
-        notify('error', 'Virtual Disk Error: ' + data.message);
-        throw new Error(data.message);
-      } else if (data.message && (
-        data.message.includes('No ISO file') || 
-        data.message.includes('ISO file not found')
-      )) {
-        notify('error', 'ISO File Error: ' + data.message);
-        throw new Error(data.message);
-      } else {
-        throw new Error(data.message || 'Failed to start VM');
-      }
-    }
-    
-    notify('success', `VM started successfully. QEMU window should appear.`);
-    return data.vm;
-  } catch (error) {
-    return handleApiError(error, 'Failed to start virtual machine');
-  }
-};
-
-// Stop a virtual machine
-export const stopVirtualMachine = async (id: string): Promise<VirtualMachine> => {
-  try {
-    const response = await fetch(`${API_URL}/api/vms/${id}/stop`, {
-      method: 'POST',
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to stop VM');
-    }
-    
-    notify('info', `VM stopped successfully`);
-    return data.vm;
-  } catch (error) {
-    return handleApiError(error, 'Failed to stop virtual machine');
-  }
-};
-
-// Delete a virtual machine
-export const deleteVirtualMachine = async (id: string): Promise<void> => {
-  try {
-    const response = await fetch(`${API_URL}/api/vms/${id}`, {
-      method: 'DELETE',
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to delete VM');
-    }
-    
-    notify('info', `VM deleted successfully`);
-  } catch (error) {
-    return handleApiError(error, 'Failed to delete virtual machine');
-  }
-};
-
-// Update a virtual machine
-export const updateVirtualMachine = async (id: string, params: VMUpdateParams): Promise<VirtualMachine> => {
-  try {
-    const response = await fetch(`${API_URL}/api/vms/${id}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(params),
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to update VM');
-    }
-    
-    notify('success', `VM updated successfully`);
-    return data.vm;
-  } catch (error) {
-    return handleApiError(error, 'Failed to update virtual machine');
-  }
-};
-
-// Get all virtual disks
-export const getVirtualDisks = async (): Promise<VirtualDisk[]> => {
-  try {
-    const response = await fetch(`${API_URL}/api/disks`);
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to fetch disks');
-    }
-    
-    // Add a unique ID to each disk for frontend tracking
-    return data.disks.map((disk: any, index: number) => ({
-      ...disk,
-      id: `disk_${disk.name}_${disk.format}`
-    }));
-  } catch (error) {
-    return handleApiError(error, 'Failed to load virtual disks');
-  }
-};
-
-// Create a new virtual disk
-export const createVirtualDisk = async (
-  name: string,
-  format: 'qcow2' | 'raw' | 'vdi' | 'vmdk',
-  size: number // Size in GB
-): Promise<VirtualDisk> => {
-  try {
-    const response = await fetch(`${API_URL}/api/create-disk`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        diskName: name,
-        size: `${size}G`,
-        format
-      }),
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to create disk');
-    }
-    
-    notify('success', `Virtual disk "${name}" created successfully`);
-    return data.disk;
-  } catch (error) {
-    return handleApiError(error, 'Failed to create virtual disk');
-  }
-};
-
-// Delete a virtual disk
-export const deleteVirtualDisk = async (id: string): Promise<void> => {
-  try {
-    // Find the disk to get name and format
-    const disks = await getVirtualDisks();
-    const disk = disks.find(d => d.id === id);
-    
-    if (!disk) {
-      throw new Error('Disk not found');
-    }
-    
-    const response = await fetch(`${API_URL}/api/disks/${disk.name}/${disk.format}`, {
-      method: 'DELETE',
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to delete disk');
-    }
-    
-    notify('info', `Disk "${disk.name}" deleted successfully`);
-  } catch (error) {
-    return handleApiError(error, 'Failed to delete virtual disk');
-  }
-};
-
-// Update a virtual disk
-export const updateVirtualDisk = async (
-  id: string,
-  params: { size: number }, // Size in GB
-  onVMsUpdated?: () => void // Callback to refresh VMs after disk update
-): Promise<VirtualDisk> => {
-  try {
-    // Find the disk to get name and format
-    const disks = await getVirtualDisks();
-    const disk = disks.find(d => d.id === id);
-    
-    if (!disk) {
-      throw new Error('Disk not found');
-    }
-    
-    const response = await fetch(`${API_URL}/api/disks/${disk.name}/${disk.format}/resize`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        size: `${params.size}G`,
-      }),
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to update disk');
-    }
-    
-    // Check if any VMs were updated with the new disk size
-    const vmsUpdatedMessage = data.vmsUpdated > 0 
-      ? ` and updated in ${data.vmsUpdated} VM${data.vmsUpdated > 1 ? 's' : ''}`
-      : '';
       
-    notify('success', `Disk "${disk.name}" resized to ${params.size}GB successfully${vmsUpdatedMessage}`);
-    
-    // If VMs were updated, trigger the callback to refresh the VM list
-    if (data.vmsUpdated > 0 && onVMsUpdated) {
-      onVMsUpdated();
+      if (!vmMetadata || vmMetadata.length === 0) {
+        return []; // Return empty array if no VMs found
+      }
+      
+      // Map Supabase data to VirtualMachine objects
+      const vms = vmMetadata.map(vm => {
+        // Extract disk info from path
+        let disk;
+        if (vm.disk_path) {
+          const diskPathParts = vm.disk_path.split('\\');
+          const diskFileName = diskPathParts[diskPathParts.length - 1];
+          const diskNameParts = diskFileName.split('.');
+          const diskName = diskNameParts[0];
+          const diskFormat = diskNameParts[1];
+          
+          disk = {
+            id: `disk_${diskName}_${diskFormat}`,
+            name: diskName,
+            format: diskFormat,
+            path: vm.disk_path,
+            size: 0, // Size info not available directly
+            createdAt: new Date(vm.created_at)
+          };
+        }
+        
+        // Extract ISO info from path if available
+        let iso;
+        if (vm.iso_path) {
+          const isoPathParts = vm.iso_path.split('\\');
+          const isoFileName = isoPathParts[isoPathParts.length - 1];
+          
+          iso = {
+            id: `iso_${isoFileName.replace(/\s+/g, '_').toLowerCase()}`,
+            name: isoFileName,
+            path: vm.iso_path,
+            size: 0, // Size info not available directly
+            uploadedAt: new Date()
+          };
+        }
+        
+        return {
+          id: vm.local_vm_id || `vm_${vm.id}`,
+          name: vm.name,
+          cpuCores: vm.cpu_cores,
+          memory: vm.memory,
+          status: vm.status || 'stopped',
+          disk: disk,
+          iso: iso,
+          createdAt: new Date(vm.created_at),
+          lastStarted: vm.updated_at ? new Date(vm.updated_at) : undefined,
+          user_id: vm.user_id
+        };
+      });
+      
+      return vms;
+    } catch (error) {
+      console.error('Error fetching virtual machines:', error);
+      throw error;
     }
-    
-    return data.disk;
-  } catch (error) {
-    return handleApiError(error, 'Failed to update virtual disk');
-  }
-};
+  },
 
-// Get list of ISOs
-export const getISOs = async (): Promise<ISO[]> => {
-  try {
-    const response = await fetch(`${API_URL}/api/isos`);
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to fetch ISOs');
+  /**
+   * Get a specific virtual machine by ID
+   */
+  async getVirtualMachine(id: string): Promise<VirtualMachine> {
+    try {
+      const response = await fetch(`${API_URL}/api/vms/${id}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch virtual machine');
+      }
+
+      const data = await response.json();
+      return data.vm;
+    } catch (error) {
+      console.error(`Error fetching virtual machine ${id}:`, error);
+      throw error;
     }
-    
-    return data.isos;
-  } catch (error) {
-    return handleApiError(error, 'Failed to load ISO files');
-  }
-};
+  },
 
-// Register a custom ISO path
-export const registerISOPath = async (isoPath: string, name?: string): Promise<ISO> => {
+  /**
+   * Create a new virtual machine
+   */
+  async createVirtualMachine(
+    name: string,
+    cpuCores: number,
+    memory: number,
+    disk: VirtualDisk,
+    iso?: ISO
+  ): Promise<VirtualMachine> {
+    try {
+      // Create VM locally first
+      const response = await fetch(`${API_URL}/api/create-vm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name,
+          cpuCores,
+          memory,
+          disk,
+          iso
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create virtual machine');
+      }
+
+      const data = await response.json();
+      
+      // Get current user for Supabase integration
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // Store metadata in Supabase
+        const { error } = await supabase
+          .from('virtual_machines_metadata')
+          .insert({
+            name: data.vm.name,
+            cpu_cores: data.vm.cpuCores,
+            memory: data.vm.memory,
+            status: data.vm.status,
+            disk_path: disk.path,
+            iso_path: iso?.path,
+            local_vm_id: data.vm.id,
+            user_id: user.id,
+            created_at: data.vm.createdAt,
+            updated_at: new Date().toISOString()
+          });
+          
+        if (error) {
+          console.error('Error storing VM metadata in Supabase:', error);
+        }
+      }
+
+      return data.vm;
+    } catch (error) {
+      console.error('Error creating virtual machine:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Start a virtual machine
+   */
+  async startVirtualMachine(id: string): Promise<VirtualMachine> {
+    try {
+      const response = await fetch(`${API_URL}/api/vms/${id}/start`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to start virtual machine');
+      }
+
+      const data = await response.json();
+      
+      // Update status in Supabase
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: vmMetadata } = await supabase
+            .from('virtual_machines_metadata')
+            .select('id')
+            .eq('local_vm_id', id)
+            .eq('user_id', user.id)
+            .single();
+            
+          if (vmMetadata) {
+            await supabase
+              .from('virtual_machines_metadata')
+              .update({
+                status: 'running',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', vmMetadata.id);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to update VM status in Supabase:', err);
+      }
+
+      return data.vm;
+    } catch (error) {
+      console.error(`Error starting virtual machine ${id}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Stop a virtual machine
+   */
+  async stopVirtualMachine(id: string): Promise<VirtualMachine> {
+    try {
+      const response = await fetch(`${API_URL}/api/vms/${id}/stop`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to stop virtual machine');
+      }
+
+      const data = await response.json();
+      
+      // Update status in Supabase
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: vmMetadata } = await supabase
+            .from('virtual_machines_metadata')
+            .select('id')
+            .eq('local_vm_id', id)
+            .eq('user_id', user.id)
+            .single();
+            
+          if (vmMetadata) {
+            await supabase
+              .from('virtual_machines_metadata')
+              .update({
+                status: 'stopped',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', vmMetadata.id);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to update VM status in Supabase:', err);
+      }
+
+      return data.vm;
+    } catch (error) {
+      console.error(`Error stopping virtual machine ${id}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update a virtual machine
+   */
+  async updateVirtualMachine(
+    id: string,
+    updates: { name?: string; cpuCores?: number; memory?: number }
+  ): Promise<VirtualMachine> {
+    try {
+      const response = await fetch(`${API_URL}/api/vms/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update virtual machine');
+      }
+
+      const data = await response.json();
+      
+      // Update in Supabase
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: vmMetadata } = await supabase
+            .from('virtual_machines_metadata')
+            .select('id')
+            .eq('local_vm_id', id)
+            .eq('user_id', user.id)
+            .single();
+            
+          if (vmMetadata) {
+            await supabase
+              .from('virtual_machines_metadata')
+              .update({
+                ...(updates.name && { name: updates.name }),
+                ...(updates.cpuCores && { cpu_cores: updates.cpuCores }),
+                ...(updates.memory && { memory: updates.memory }),
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', vmMetadata.id);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to update VM in Supabase:', err);
+      }
+
+      return data.vm;
+    } catch (error) {
+      console.error(`Error updating virtual machine ${id}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Delete a virtual machine
+   */
+  async deleteVirtualMachine(id: string): Promise<void> {
+    try {
+      // Delete from Supabase first in case local deletion fails
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: vmMetadata } = await supabase
+            .from('virtual_machines_metadata')
+            .select('id')
+            .eq('local_vm_id', id)
+            .eq('user_id', user.id)
+            .single();
+            
+          if (vmMetadata) {
+            await supabase
+              .from('virtual_machines_metadata')
+              .delete()
+              .eq('id', vmMetadata.id);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to delete VM from Supabase:', err);
+      }
+
+      // Delete locally
+      const response = await fetch(`${API_URL}/api/vms/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete virtual machine');
+      }
+    } catch (error) {
+      console.error(`Error deleting virtual machine ${id}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Create a new virtual disk
+   */
+  async createVirtualDisk(
+    name: string,
+    format: string,
+    size: number
+  ): Promise<VirtualDisk> {
+    try {
+      // Get current user first to include user_id in the request
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+      
+      // Create disk locally first
+      const response = await fetch(`${API_URL}/api/create-disk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          diskName: name,
+          format,
+          size,
+          user_id: user.id
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create virtual disk');
+      }
+
+      const data = await response.json();
+      const diskData = data.disk;
+      
+      // Store metadata in Supabase
+      const { error } = await supabase
+        .from('virtual_disks_metadata')
+        .insert({
+          name: diskData.name,
+          format: diskData.format,
+          size: parseInt(diskData.size),
+          path: diskData.path,
+          user_id: user.id,
+          created_at: diskData.createdAt || new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+        
+      if (error) {
+        console.error('Error storing disk metadata in Supabase:', error);
+      }
+
+      // Convert the disk data to the expected VirtualDisk format
+      return {
+        id: `disk_${diskData.name}_${diskData.format}`,
+        name: diskData.name,
+        format: diskData.format,
+        size: parseInt(diskData.size),
+        path: diskData.path,
+        createdAt: diskData.createdAt || new Date()
+      };
+    } catch (error) {
+      console.error('Error creating virtual disk:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get all virtual disks
+   */
+  async getVirtualDisks(): Promise<VirtualDisk[]> {
+    try {
+      // Get current user first to determine which disks to retrieve
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+      
+      // Add user_id as a query parameter to filter disks by user
+      const response = await fetch(`${API_URL}/api/disks?user_id=${user.id}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch virtual disks');
+      }
+
+      const data = await response.json();
+      
+      // Check if we have any disks from the API response
+      if (!data.disks || data.disks.length === 0) {
+        // If no disks from API, try to get them directly from Supabase
+        const { data: userDisks, error } = await supabase
+          .from('virtual_disks_metadata')
+          .select('*')
+          .eq('user_id', user.id);
+          
+        if (error) {
+          console.error('Error fetching disks from Supabase:', error);
+          throw new Error('Failed to fetch virtual disks from Supabase');
+        }
+        
+        // Map Supabase data to expected format
+        return (userDisks || []).map(disk => ({
+          id: `disk_${disk.name}_${disk.format}`,
+          name: disk.name,
+          format: disk.format,
+          size: disk.size,
+          path: disk.path,
+          createdAt: disk.created_at,
+          user_id: disk.user_id
+        }));
+      }
+      
+      // Map the API response to VirtualDisk objects
+      return data.disks.map((disk: any) => ({
+        id: `disk_${disk.name}_${disk.format}`,
+        name: disk.name,
+        format: disk.format,
+        size: typeof disk.size === 'string' && disk.size.endsWith('G')
+          ? parseInt(disk.size)
+          : disk.size,
+        path: disk.path,
+        createdAt: disk.createdAt,
+        user_id: user.id // Add user_id to the disk object
+      }));
+    } catch (error) {
+      console.error('Error fetching virtual disks:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update a virtual disk
+   */
+  async updateVirtualDisk(
+    id: string,
+    updates: { size: number },
+    callback?: () => Promise<void>
+  ): Promise<VirtualDisk> {
+    try {
+      // Parse ID to get name and format
+      const [_, name, format] = id.split('_');
+      
+      const response = await fetch(`${API_URL}/api/disks/${name}/${format}/resize`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          size: updates.size
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update virtual disk');
+      }
+
+      const data = await response.json();
+      
+      // Update in Supabase
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: diskMetadata } = await supabase
+            .from('virtual_disks_metadata')
+            .select('id')
+            .eq('name', name)
+            .eq('format', format)
+            .eq('user_id', user.id)
+            .single();
+            
+          if (diskMetadata) {
+            await supabase
+              .from('virtual_disks_metadata')
+              .update({
+                size: updates.size,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', diskMetadata.id);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to update disk in Supabase:', err);
+      }
+
+      // Run the callback if provided
+      if (callback) {
+        await callback();
+      }
+
+      return {
+        id,
+        name,
+        format,
+        size: updates.size,
+        path: data.disk.path,
+        createdAt: data.disk.createdAt
+      };
+    } catch (error) {
+      console.error(`Error updating virtual disk ${id}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Delete a virtual disk
+   */
+  async deleteVirtualDisk(id: string): Promise<void> {
+    try {
+      // Parse ID to get name and format
+      const [_, name, format] = id.split('_');
+      
+      // Delete from Supabase first in case local deletion fails
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: diskMetadata } = await supabase
+            .from('virtual_disks_metadata')
+            .select('id')
+            .eq('name', name)
+            .eq('format', format)
+            .eq('user_id', user.id)
+            .single();
+            
+          if (diskMetadata) {
+            await supabase
+              .from('virtual_disks_metadata')
+              .delete()
+              .eq('id', diskMetadata.id);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to delete disk from Supabase:', err);
+      }
+
+      // Delete locally
+      const response = await fetch(`${API_URL}/api/disks/${name}/${format}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete virtual disk');
+      }
+    } catch (error) {
+      console.error(`Error deleting virtual disk ${id}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get list of ISOs
+   */
+  async getISOs(): Promise<ISO[]> {
+    try {
+      const response = await fetch(`${API_URL}/api/isos`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch ISOs');
+      }
+
+      const data = await response.json();
+      return data.isos;
+    } catch (error) {
+      console.error('Error fetching ISOs:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Register a custom ISO
+   */
+  async registerISO(isoPath: string, name?: string): Promise<ISO> {
+    try {
+      const response = await fetch(`${API_URL}/api/register-iso`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          isoPath,
+          name
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to register ISO');
+      }
+
+      const data = await response.json();
+      return data.iso;
+    } catch (error) {
+      console.error('Error registering ISO:', error);
+      throw error;
+    }
+  },
+
+
+  // Add this function to the qemuService object:
+/**
+ * Register a custom ISO path
+ */
+async registerISOPath(isoPath: string, name: string): Promise<ISO> {
   try {
     const response = await fetch(`${API_URL}/api/register-iso`, {
       method: 'POST',
@@ -364,126 +696,134 @@ export const registerISOPath = async (isoPath: string, name?: string): Promise<I
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        isoPath,
+        path: isoPath,
         name
       }),
     });
-    
-    const data = await response.json();
-    
+
     if (!response.ok) {
-      throw new Error(data.message || 'Failed to register ISO');
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to register ISO path');
     }
-    
-    notify('success', `ISO "${data.iso.name}" registered successfully`);
+
+    const data = await response.json();
     return data.iso;
   } catch (error) {
-    return handleApiError(error, 'Failed to register ISO path');
+    console.error('Error registering ISO path:', error);
+    throw error;
   }
-};
+},
 
-// Upload an ISO (simulated - in a real application, this would upload the file to the server)
-export const uploadISO = async (file: File): Promise<ISO> => {
-  try {
-    // Create a temporary path where we expect the ISO to be
-    // In a real app, we would upload the file to the server here
-    const isoName = file.name;
-    
-    // For the demo, we'll tell the user where to place the ISO file manually
-    const isoPath = `C:\\Users\\medob\\Desktop\\Last semster\\Cloud\\project-bolt-sb1-l6to3pmm\\Cloud_project\\backend\\isos\\${isoName}`;
-    
-    notify('info', `For the demo, please place "${isoName}" in the folder:\nC:\\Users\\medob\\Desktop\\Last semster\\Cloud\\project-bolt-sb1-l6to3pmm\\Cloud_project\\backend\\isos\\`);
-    
-    // Create a custom ISO object that points to where the file should be
-    const iso: ISO = {
-      id: `upload_${Date.now()}`,
-      name: isoName,
-      path: isoPath,
-      size: Math.round(file.size / (1024 * 1024)), // Convert to MB
-      uploadedAt: new Date()
-    };
-    
-    notify('success', `ISO "${file.name}" registered successfully`);
-    return iso;
-  } catch (error) {
-    return handleApiError(error, 'Failed to process ISO upload');
-  }
-};
+  /**
+   * Upload an ISO file
+   */
+  async uploadISO(file: File, onProgress?: (progress: number) => void): Promise<ISO> {
+    try {
+      const formData = new FormData();
+      formData.append('iso', file);
 
-// QEMU connection settings
-export const getQEMUConnectionStatus = async () => {
-  // Simulated connection check
-  try {
-    const vms = await getVirtualMachines();
-    const disks = await getVirtualDisks();
-    
-    notify('info', 'QEMU connection verified successfully');
-    
-    return {
-      connected: true,
-      version: 'QEMU 8.1.2',
-      machineDetails: {
-        vms: {
-          total: vms.length,
-          running: vms.filter(vm => vm.status === 'running').length
-        },
-        storage: {
-          disks: disks.length,
-          totalSize: disks.reduce((sum, disk) => sum + disk.size, 0)
-        }
-      }
-    };
-  } catch (error) {
-    notify('error', 'Failed to connect to QEMU');
-    return { connected: false };
-  }
-};
+      // Create a custom request with progress event
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        
+        xhr.upload.addEventListener('progress', (event) => {
+          if (event.lengthComputable && onProgress) {
+            const progress = Math.round((event.loaded / event.total) * 100);
+            onProgress(progress);
+          }
+        });
 
-export const configureQEMUConnection = async (connection: any) => {
-  // Simulated configuration
-  return new Promise<void>((resolve) => {
-    setTimeout(() => {
-      notify('success', 'QEMU connection settings updated');
-      resolve();
-    }, 1000);
-  });
-};
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              resolve(data.iso);
+            } catch (error) {
+              reject(new Error('Invalid response format'));
+            }
+          } else {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        });
 
-// Command terminal functionality
-export const executeCommand = async (command: string): Promise<Command> => {
-  // Simulated command execution
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const result: Command = {
-        id: Date.now().toString(),
-        command,
-        output: `Simulated output for command: ${command}`,
-        timestamp: new Date(),
-        status: Math.random() > 0.2 ? 'success' : 'error'
-      };
-      
-      notify('info', `Command executed: ${command.slice(0, 25)}${command.length > 25 ? '...' : ''}`);
-      resolve(result);
-    }, 1000);
-  });
-};
+        xhr.addEventListener('error', () => {
+          reject(new Error('Network error occurred during upload'));
+        });
 
-export const getCommandHistory = async (): Promise<Command[]> => {
-  // Simulated command history
-  return [
-    {
-      id: '1',
-      command: 'qemu-system-x86_64 -version',
-      output: 'QEMU emulator version 8.1.2\nCopyright (c) 2003-2023 Fabrice Bellard and the QEMU Project developers',
-      timestamp: new Date('2025-05-01T12:30:45.000Z'),
-      status: 'success'
-    },
-    {
-      id: '2',
-      command: 'qemu-img info ubuntu-disk.qcow2',
-      output: 'image: ubuntu-disk.qcow2\nfile format: qcow2\nvirtual size: 20 GiB (21474836480 bytes)\ndisk size: 196 KiB\ncluster_size: 65536\nformat specific information:\n    compat: 1.1\n    compression type: zlib\n    lazy refcounts: false\n    refcount bits: 16\n    corrupt: false\n    extended l2: false',
-      timestamp: new Date('2025-05-01T12:32:15.000Z'),
-      status: 'success'
+        xhr.addEventListener('abort', () => {
+          reject(new Error('Upload aborted'));
+        });
+
+        // Open and send the request
+        xhr.open('POST', `${API_URL}/api/upload-iso`, true);
+        xhr.send(formData);
+      });
+    } catch (error) {
+      console.error('Error uploading ISO:', error);
+      throw error;
     }
-  ];
+  },
+
+  /**
+   * Execute a QEMU command
+   */
+  async executeCommand(command: string): Promise<Command> {
+    // This is a placeholder - backend doesn't have a proper command execution endpoint yet
+    const timestamp = new Date();
+    const id = `cmd_${timestamp.getTime()}`;
+    
+    // For demo purposes, we'll simulate command execution
+    // In a real implementation, we would send this to the backend
+    return {
+      id,
+      command,
+      output: `Executed command: ${command}`,
+      status: 'success',
+      timestamp
+    };
+  },
+
+  /**
+   * Get command history
+   */
+  async getCommandHistory(): Promise<Command[]> {
+    // This is a placeholder - backend doesn't have a proper command history endpoint yet
+    // In a real implementation, we would fetch this from the backend
+    return [
+      {
+        id: 'cmd_1',
+        command: 'qemu-img info disk.qcow2',
+        output: 'image: disk.qcow2\nfile format: qcow2\nvirtual size: 10G',
+        status: 'success',
+        timestamp: new Date(Date.now() - 3600000)
+      },
+      {
+        id: 'cmd_2',
+        command: 'qemu-system-x86_64 -version',
+        output: 'QEMU emulator version 6.2.0\nCopyright (c) 2003-2021 Fabrice Bellard and the QEMU Project developers',
+        status: 'success',
+        timestamp: new Date(Date.now() - 7200000)
+      }
+    ];
+  }
 };
+
+// Re-export the functions as named exports
+export const getVirtualMachines = qemuService.getVirtualMachines;
+export const getVirtualMachine = qemuService.getVirtualMachine;
+export const createVirtualMachine = qemuService.createVirtualMachine;
+export const startVirtualMachine = qemuService.startVirtualMachine;
+export const stopVirtualMachine = qemuService.stopVirtualMachine;
+export const updateVirtualMachine = qemuService.updateVirtualMachine;
+export const deleteVirtualMachine = qemuService.deleteVirtualMachine;
+export const createVirtualDisk = qemuService.createVirtualDisk;
+export const getVirtualDisks = qemuService.getVirtualDisks;
+export const updateVirtualDisk = qemuService.updateVirtualDisk;
+export const deleteVirtualDisk = qemuService.deleteVirtualDisk;
+export const getISOs = qemuService.getISOs;
+export const registerISO = qemuService.registerISO;
+export const executeCommand = qemuService.executeCommand;
+export const getCommandHistory = qemuService.getCommandHistory;
+// Add this to the re-export section at the bottom of the file
+export const registerISOPath = qemuService.registerISOPath;
+export const uploadISO = qemuService.uploadISO;

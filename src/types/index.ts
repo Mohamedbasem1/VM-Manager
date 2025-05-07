@@ -1,63 +1,59 @@
-export interface VirtualDisk {
-  id: string;
-  name: string;
-  format: 'qcow2' | 'raw' | 'vdi' | 'vmdk';
-  size: number; // Size in GB
-  path: string;
-  createdAt: Date;
-}
+// VM Manager Types
 
-export interface ISO {
-  id: string;
-  name: string;
-  path: string;
-  size: number; // Size in MB
-  uploadedAt: Date;
-}
-
-export interface QEMUConnection {
-  host: string;
-  port: number;
-  enabled: boolean;
-  secured: boolean; // Whether to use SSL/TLS
-}
-
+// VM types
 export interface VirtualMachine {
   id: string;
   name: string;
   cpuCores: number;
-  memory: number; // Memory in MB
-  disk: VirtualDisk;
+  memory: number; // in GB
+  status: 'running' | 'stopped';
+  disk?: VirtualDisk;
   iso?: ISO;
-  status: 'running' | 'stopped' | 'paused';
   createdAt: Date;
   lastStarted?: Date;
-  networkType?: 'bridged' | 'nat' | 'host-only';
-  qemuConnection?: QEMUConnection;
-}
-
-export interface Command {
-  id: string;
-  command: string;
-  output: string;
-  timestamp: Date;
-  status: 'success' | 'error' | 'pending';
+  user_id?: string; // Added for Supabase integration
 }
 
 export interface VMUpdateParams {
   name?: string;
   cpuCores?: number;
   memory?: number;
-  diskSize?: number;
-  networkType?: 'bridged' | 'nat' | 'host-only';
-  qemuConnection?: QEMUConnection;
 }
 
+// Disk types
+export interface VirtualDisk {
+  id: string;
+  name: string;
+  format: string;
+  size: number; // in GB
+  path: string;
+  createdAt: Date | string;
+}
+
+// ISO types
+export interface ISO {
+  id: string;
+  name: string;
+  path: string;
+  size: number; // in MB
+  uploadedAt: Date | string;
+}
+
+// Command types
+export interface Command {
+  id: string;
+  command: string;
+  output: string;
+  status: 'success' | 'error' | 'pending';
+  timestamp: Date;
+}
+
+// Docker types
 export interface Dockerfile {
   name: string;
   path: string;
   content: string;
-  createdAt: string;
+  createdAt: Date | string;
   size?: number;
 }
 
@@ -72,8 +68,57 @@ export interface DockerImage {
 export interface DockerContainer {
   id: string;
   image: string;
-  command: string;
+  command?: string;
   status: string;
-  ports: string;
+  ports?: string;
   name: string;
+}
+
+// Supabase types
+export interface Profile {
+  id: string;
+  username: string | null;
+  full_name: string | null;
+  avatar_url: string | null;
+  is_admin: boolean;
+  updated_at: string;
+  created_at: string;
+}
+
+export interface VMMetadata {
+  id: string;
+  name: string;
+  cpu_cores: number;
+  memory: number;
+  status: string;
+  disk_path?: string;
+  iso_path?: string;
+  local_vm_id: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiskMetadata {
+  id: string;
+  name: string;
+  format: string;
+  size: number;
+  path: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DockerMetadata {
+  id: string;
+  type: 'dockerfile' | 'image' | 'container';
+  name: string;
+  local_id?: string;
+  path?: string;
+  status?: string;
+  content?: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
 }

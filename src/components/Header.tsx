@@ -1,9 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Monitor, List, Moon, Sun, X, Settings, Info, HardDrive, CpuIcon, Command, Grid, Home, Bell, User, LayoutDashboard, Package } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Monitor, List, Moon, Sun, X, Settings, Info, HardDrive, CpuIcon, Command, Grid, Home, Bell, User, LayoutDashboard, Package, LogIn, UserPlus, LogOut } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+
+// Add a UserProfile interface to include the profile data we need
+interface UserProfile {
+  full_name?: string;
+}
 
 const Header: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     const savedMode = localStorage.getItem('darkMode');
@@ -11,8 +19,11 @@ const Header: React.FC = () => {
     return savedMode ? savedMode === 'true' : prefersDark;
   });
   const [profileOpen, setProfileOpen] = useState(false);
-  const [notifications, setNotifications] = useState<number>(0); // Placeholder for notification count
+  const [notifications] = useState<number>(0); // Removed unused setNotifications
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false); // Set to false for now
   const isConnected = true; // Placeholder for connection status
+  // Add a profile state with type UserProfile
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     if (darkMode) {
@@ -23,6 +34,20 @@ const Header: React.FC = () => {
     localStorage.setItem('darkMode', darkMode.toString());
   }, [darkMode]);
 
+  useEffect(() => {
+    // Check if user is logged in
+    setIsLoggedIn(!!user);
+    
+    // You would normally fetch the profile data here
+    // This is a placeholder to fix the TypeScript error
+    if (user) {
+      // Simulate fetching profile data
+      setProfile({ full_name: user.email?.split('@')[0] });
+    } else {
+      setProfile(null);
+    }
+  }, [user]);
+
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
   };
@@ -31,11 +56,27 @@ const Header: React.FC = () => {
     setMobileMenuOpen(false);
   };
 
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      setProfileOpen(false);
+      setIsLoggedIn(false);
+      navigate('/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
   const navLinks = [
     { name: 'Home', path: '/', icon: <Home size={16} className="mr-2" /> },
     { name: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={16} className="mr-2" /> },
     { name: 'Create', path: '/create', icon: <Command size={16} className="mr-2" /> },
     { name: 'Docker', path: '/create?tab=docker', icon: <Package size={16} className="mr-2" /> },
+  ];
+
+  const authLinks = [
+    { name: 'Login', path: '/login', icon: <LogIn size={16} className="mr-2" /> },
+    { name: 'Sign Up', path: '/signup', icon: <UserPlus size={16} className="mr-2" /> },
   ];
 
   return (
@@ -71,6 +112,27 @@ const Header: React.FC = () => {
             </nav>
           </div>
           <div className="flex items-center space-x-2">
+            {/* Auth Links */}
+            {!isLoggedIn && (
+              <div className="hidden sm:flex sm:space-x-2 mr-2">
+                {authLinks.map((link) => (
+                  <Link
+                    key={link.name}
+                    to={link.path}
+                    className={`${
+                      location.pathname === link.path
+                        ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700'
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 border-gray-200 dark:border-gray-700'
+                    } px-3 py-1.5 rounded-md text-sm font-medium flex items-center border transition-colors duration-150`}
+                    aria-label={link.name}
+                    title={link.name}
+                  >
+                    {link.icon}
+                    {link.name}
+                  </Link>
+                ))}
+              </div>
+            )}
             {/* Notifications */}
             <button
               className="relative p-2 rounded-md text-gray-500 dark:text-gray-300 hover:text-purple-700 dark:hover:text-purple-300 hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-400"
@@ -97,10 +159,30 @@ const Header: React.FC = () => {
               </button>
               {profileOpen && (
                 <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-2 z-50 border border-gray-200 dark:border-gray-700 animate-fade-in">
-                  <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 font-semibold border-b border-gray-100 dark:border-gray-700">User</div>
-                  <button className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">Profile</button>
-                  <button className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">Settings</button>
-                  <button className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors">Logout</button>
+                  <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 font-semibold border-b border-gray-100 dark:border-gray-700">
+                    {profile?.full_name || user?.email}
+                  </div>
+                  <Link
+                    to="/profile"
+                    className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center"
+                  >
+                    <User size={16} className="mr-2" />
+                    Your Profile
+                  </Link>
+                  <Link
+                    to="/settings"
+                    className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center"
+                  >
+                    <Settings size={16} className="mr-2" />
+                    Settings
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors flex items-center"
+                  >
+                    <LogOut size={16} className="mr-2" />
+                    Sign Out
+                  </button>
                 </div>
               )}
             </div>
@@ -166,6 +248,36 @@ const Header: React.FC = () => {
                 {link.name}
               </Link>
             ))}
+            
+            {/* Auth Links for mobile */}
+            {!isLoggedIn && (
+              <>
+                <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                    Authentication
+                  </div>
+                </div>
+                {authLinks.map((link) => (
+                  <Link
+                    key={link.name}
+                    to={link.path}
+                    className={`${
+                      location.pathname === link.path
+                        ? 'bg-purple-50 dark:bg-purple-800 text-purple-700 dark:text-purple-200'
+                        : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    } flex items-center px-3 py-2 rounded-md text-base font-medium transition-colors duration-150`}
+                    onClick={closeMobileMenu}
+                    tabIndex={0}
+                    aria-label={link.name}
+                    title={link.name}
+                  >
+                    {link.icon}
+                    {link.name}
+                  </Link>
+                ))}
+              </>
+            )}
+            
             <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
               <div className="flex items-center px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
                 Status:

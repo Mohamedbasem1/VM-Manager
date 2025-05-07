@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DockerContainer } from '../types';
 import { getDockerContainers, stopDockerContainer } from '../services/dockerService';
-import { RefreshCw, Box, Clock, StopCircle, Terminal, Activity, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Box, StopCircle, Activity } from 'lucide-react';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 
 const DockerContainerList: React.FC = () => {
