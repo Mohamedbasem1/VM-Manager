@@ -170,16 +170,9 @@ export const dockerService = {
         console.error('Error fetching Docker image metadata from Supabase:', error);
       }
       
-      // If we have Supabase metadata, filter images by IDs associated with user
-      if (imageMetadata && imageMetadata.length > 0) {
-        const userImageIds = imageMetadata.map(meta => meta.local_id);
-        const userImages = allImages.filter((image: DockerImage) => userImageIds.includes(image.id));
-        return userImages;
-      }
-      
-      // If we don't have any metadata yet, we need a way to initialize the first time
-      // For now, return an empty array to be safe
-      return [];
+      // Just return all images rather than filtering - this ensures all 
+      // locally built images and pulled images are displayed
+      return allImages;
     } catch (error) {
       console.error('Error fetching Docker images:', error);
       throw error;
@@ -264,7 +257,7 @@ export const dockerService = {
         console.error('Error fetching container metadata from Supabase:', error);
       }
       
-      // If we have Supabase metadata, filter containers by IDs associated with user
+      // If we have Supabase metadata and it's not empty, filter containers by IDs associated with user
       if (containerMetadata && containerMetadata.length > 0) {
         const userContainerIds = containerMetadata.map(meta => meta.local_id);
         const userContainers = allContainers.filter((container: {id: string}) => 
@@ -280,8 +273,15 @@ export const dockerService = {
         }));
       }
       
-      // If no metadata yet, return empty array to be safe
-      return [];
+      // If no metadata yet, return all containers (MODIFIED - now showing all containers instead of empty array)
+      // This allows users to see containers created outside the application
+      return allContainers.map((container: {id: string, name: string, image: string, status: string, ports: string}) => ({
+        id: container.id,
+        name: container.name,
+        image: container.image,
+        status: container.status,
+        ports: container.ports
+      }));
     } catch (error) {
       console.error('Error fetching Docker containers:', error);
       throw error;
@@ -388,7 +388,112 @@ export const dockerService = {
       console.error(`Error fetching ${type} metadata from Supabase:`, error);
       throw error;
     }
-  }
+  },
+
+  /**
+   * Search for local Docker images by name/tag
+   */
+  async searchLocalImages(query: string): Promise<DockerImage[]> {
+    try {
+      // Get all images first - using direct function call instead of this.getDockerImages
+      const allImages = await getDockerImages();
+      
+      // Filter images by query (case-insensitive)
+      const lowerQuery = query.toLowerCase();
+      return allImages.filter(image => {
+        const repo = (image.repository || '').toLowerCase();
+        const tag = (image.tag || '').toLowerCase();
+        const fullName = `${repo}:${tag}`;
+        return repo.includes(lowerQuery) || 
+               tag.includes(lowerQuery) || 
+               fullName.includes(lowerQuery) ||
+               image.id.toLowerCase().includes(lowerQuery);
+      });
+    } catch (error) {
+      console.error('Error searching local Docker images:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Search for Docker images on Docker Hub
+   */
+  async searchDockerHub(query: string): Promise<any[]> {
+    try {
+      // Docker Hub API endpoint for searching images
+      const response = await fetch(`${API_URL}/api/docker/search?query=${encodeURIComponent(query)}`, {
+        method: 'GET'
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to search Docker Hub');
+      }
+
+      const data = await response.json();
+      return data.results || [];
+    } catch (error) {
+      console.error('Error searching Docker Hub:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Pull Docker image from Docker Hub with progress tracking
+   * Note: This doesn't use the pullDockerImage function for streaming support
+   * The streaming API is handled directly in the component to show real-time progress
+   */
+  async pullDockerImage(imageName: string): Promise<any> {
+    try {
+      // Get current user first
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      // The actual pull is handled through streaming in the component
+      // This function is now just used to record in Supabase after a successful pull
+      
+      // First, get the image ID of the pulled image
+      const imageIdResponse = await fetch(`${API_URL}/api/docker/images`, {
+        method: 'GET'
+      });
+      
+      if (!imageIdResponse.ok) {
+        throw new Error('Failed to get Docker images after pull');
+      }
+      
+      const imagesData = await imageIdResponse.json();
+      const pulledImage = imagesData.images.find((img: any) => 
+        `${img.repository}:${img.tag}` === imageName || 
+        img.repository === imageName
+      );
+      
+      const imageId = pulledImage ? pulledImage.id : '';
+      
+      // Store metadata in Supabase to track that this user pulled this image
+      try {
+        await supabase
+          .from('docker_metadata')
+          .insert({
+            type: 'image',
+            name: imageName,
+            local_id: imageId,
+            user_id: user.id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+      } catch (err) {
+        console.error('Error storing image metadata in Supabase:', err);
+      }
+      
+      return { success: true, imageId };
+    } catch (error) {
+      console.error(`Error pulling Docker image ${imageName}:`, error);
+      throw error;
+    }
+  },
 };
 
 // Re-export the functions as named exports
@@ -402,3 +507,6 @@ export const stopDockerContainer = dockerService.stopDockerContainer;
 export const runDockerContainer = dockerService.runDockerContainer;
 export const deleteDockerfile = dockerService.deleteDockerfile;
 export const getDockerMetadataFromSupabase = dockerService.getDockerMetadataFromSupabase;
+export const searchLocalImages = dockerService.searchLocalImages;
+export const searchDockerHub = dockerService.searchDockerHub;
+export const pullDockerImage = dockerService.pullDockerImage;

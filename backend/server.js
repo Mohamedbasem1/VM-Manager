@@ -1058,6 +1058,218 @@ app.get('/api/docker/containers', (req, res) => {
   }
 });
 
+// API endpoint to search Docker Hub
+app.get('/api/docker/search', (req, res) => {
+  try {
+    const { query } = req.query;
+    
+    if (!query) {
+      return res.status(400).json({
+        success: false,
+        message: 'Search query is required'
+      });
+    }
+    
+    // Use Docker Hub API to search for images
+    const url = `https://hub.docker.com/v2/search/repositories/?query=${encodeURIComponent(query)}`;
+    
+    // Use https module to make the request to Docker Hub
+    const https = require('https');
+    
+    https.get(url, (response) => {
+      let data = '';
+      
+      response.on('data', (chunk) => {
+        data += chunk;
+      });
+      
+      response.on('end', () => {
+        try {
+          const parsedData = JSON.parse(data);
+          
+          // Map the Docker Hub API response to match the frontend's expected format
+          const formattedResults = (parsedData.results || []).map(item => ({
+            name: item.repo_name || item.name,
+            description: item.short_description || item.description || '',
+            star_count: item.star_count,
+            is_official: item.is_official,
+            pull_count: item.pull_count
+          }));
+          
+          res.status(200).json({
+            success: true,
+            results: formattedResults
+          });
+        } catch (error) {
+          console.error('Error parsing Docker Hub response:', error);
+          res.status(500).json({
+            success: false,
+            message: 'Failed to parse Docker Hub response',
+            error: error.message
+          });
+        }
+      });
+    }).on('error', (error) => {
+      console.error('Error contacting Docker Hub:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to contact Docker Hub',
+        error: error.message
+      });
+    });
+  } catch (err) {
+    console.error('Error searching Docker Hub:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to search Docker Hub',
+      error: err.message
+    });
+  }
+});
+
+// API endpoint to pull Docker image
+app.post('/api/docker/pull', (req, res) => {
+  try {
+    const { image } = req.body;
+    
+    if (!image) {
+      return res.status(400).json({
+        success: false,
+        message: 'Image name is required'
+      });
+    }
+    
+    console.log(`Pulling Docker image: ${image}`);
+    
+    // Use spawn instead of exec to get real-time output
+    const dockerPull = spawn('docker', ['pull', image]);
+    
+    // Track download progress
+    let progress = {};
+    let errorOutput = '';
+    
+    // Process stdout data
+    dockerPull.stdout.on('data', (data) => {
+      const output = data.toString();
+      console.log(`Docker pull output: ${output}`);
+      
+      // Parse the progress information from Docker output
+      try {
+        // Lines can contain progress information like:
+        // "Pulling from library/nginx: Layer already exists"
+        // "Pulling fs layer: [====>   ]  12.34MB/42.42MB"
+        const lines = output.split('\n').filter(line => line.trim() !== '');
+        
+        lines.forEach(line => {
+          // Check if this is a status line
+          if (line.includes('Pulling from')) {
+            // This is the initial line when pull starts
+            const repo = line.split('Pulling from ')[1]?.trim();
+            if (repo) {
+              progress.repository = repo;
+            }
+          } else if (line.includes('Status:')) {
+            // Status update, e.g. "Status: Downloaded newer image..."
+            progress.status = line;
+          } else if (line.includes('Download complete') || line.includes('Pull complete')) {
+            // Layer download/pull completion
+            const layerId = line.split(':')[0]?.trim();
+            if (layerId) {
+              progress[layerId] = { complete: true };
+            }
+          } else if (line.includes('Downloading') || line.includes('Extracting')) {
+            // Progress update for a layer
+            // Example: "[1/4] Downloading  22%"
+            const match = line.match(/(\[[^\]]+\])\s+(Downloading|Extracting)\s+(.+)/);
+            if (match) {
+              const layerId = match[1];
+              const action = match[2];
+              const progressInfo = match[3]; // May contain percentage or bytes info
+              
+              // Store the layer progress
+              progress[layerId] = { 
+                action, 
+                progress: progressInfo,
+                timestamp: Date.now()
+              };
+            }
+          }
+        });
+        
+        // Send progress update to client
+        res.write(JSON.stringify({ 
+          type: 'progress', 
+          progress: progress 
+        }) + '\n');
+      } catch (error) {
+        console.error('Error parsing Docker progress:', error);
+      }
+    });
+
+    // Process stderr data
+    dockerPull.stderr.on('data', (data) => {
+      errorOutput += data.toString();
+      console.error(`Docker pull stderr: ${data.toString()}`);
+    });
+
+    // Set appropriate headers for streaming response
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    res.setHeader('Transfer-Encoding', 'chunked');
+
+    // Handle process completion
+    dockerPull.on('close', (code) => {
+      console.log(`Docker pull process exited with code ${code}`);
+      
+      if (code !== 0) {
+        // Pull failed
+        res.write(JSON.stringify({
+          type: 'error',
+          success: false,
+          message: `Failed to pull Docker image: ${errorOutput || 'Unknown error'}`,
+          code: code
+        }) + '\n');
+        res.end();
+        return;
+      }
+      
+      // Get the image ID after successful pull
+      exec(`docker images --filter=reference=${image} --format "{{.ID}}"`, (idError, idStdout, idStderr) => {
+        const imageId = idError ? null : idStdout.trim();
+        
+        // Final success message
+        res.write(JSON.stringify({
+          type: 'complete',
+          success: true,
+          message: 'Docker image pulled successfully',
+          imageName: image,
+          imageId: imageId
+        }) + '\n');
+        
+        res.end();
+      });
+    });
+    
+    // Handle errors in the spawn process itself
+    dockerPull.on('error', (err) => {
+      console.error('Error spawning Docker pull process:', err);
+      res.write(JSON.stringify({
+        type: 'error',
+        success: false,
+        message: `Error spawning Docker pull process: ${err.message}`,
+      }) + '\n');
+      res.end();
+    });
+    
+  } catch (err) {
+    console.error('Error pulling Docker image:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to pull Docker image',
+      error: err.message
+    });
+  }
+});
+
 // API endpoint to stop a Docker container
 app.post('/api/docker/containers/:id/stop', (req, res) => {
   try {
