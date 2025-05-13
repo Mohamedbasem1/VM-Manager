@@ -26,10 +26,9 @@ const QEMUConnectionSettings: React.FC = () => {
     checking: false,
     details: null
   });
-
   useEffect(() => {
     const checkConnection = async () => {
-      setConnectionStatus(prev => ({ ...prev, checking: true }));
+      setConnectionStatus((prev) => ({ ...prev, checking: true }));
       try {
         const result = await getQEMUConnectionStatus();
         setConnectionStatus({

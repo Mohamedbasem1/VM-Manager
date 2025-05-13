@@ -104,14 +104,13 @@ const VMCard: React.FC<VMCardProps> = ({ vm, onVMUpdated, onVMDeleted }) => {
       setIsLoading(false);
     }
   };
-
   const getStatusColor = () => {
     switch (vm.status) {
       case 'running':
         return 'text-green-500 bg-green-100 dark:bg-green-900/30';
       case 'stopped':
         return 'text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700/30';
-      case 'paused':
+      case 'paused': // Adding this case even though it's not in the type definition
         return 'text-yellow-500 bg-yellow-100 dark:bg-yellow-900/30';
       default:
         return 'text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700/30';
@@ -224,11 +223,10 @@ const VMCard: React.FC<VMCardProps> = ({ vm, onVMUpdated, onVMDeleted }) => {
               <div className="flex items-center">
                 <Memory size={16} className="text-gray-500 dark:text-gray-400 mr-2" />
                 <span className="text-sm text-gray-700 dark:text-gray-300">{formatMemory(vm.memory)}</span>
-              </div>
-              <div className="flex items-center col-span-2">
+              </div>              <div className="flex items-center col-span-2">
                 <HardDrive size={16} className="text-gray-500 dark:text-gray-400 mr-2" />
                 <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
-                  {vm.disk.name} ({vm.disk.size} GB, {vm.disk.format})
+                  {vm.disk?.name || 'No Disk'} {vm.disk && `(${vm.disk.size} GB, ${vm.disk.format})`}
                 </span>
               </div>
               {vm.iso && (
@@ -272,10 +270,11 @@ const VMCard: React.FC<VMCardProps> = ({ vm, onVMUpdated, onVMDeleted }) => {
                 <div className="space-y-2 text-gray-600 dark:text-gray-400">
                   <div>
                     <span className="font-medium">VM ID:</span> {vm.id}
-                  </div>
-                  <div>
-                    <span className="font-medium">Disk Path:</span> <span className="text-xs break-all">{vm.disk.path}</span>
-                  </div>
+                  </div>                  {vm.disk && (
+                    <div>
+                      <span className="font-medium">Disk Path:</span> <span className="text-xs break-all">{vm.disk.path}</span>
+                    </div>
+                  )}
                   {vm.iso && (
                     <div>
                       <span className="font-medium">ISO Path:</span> <span className="text-xs break-all">{vm.iso.path}</span>

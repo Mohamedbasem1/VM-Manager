@@ -6,8 +6,8 @@ import {
   buildDockerImage, 
   deleteDockerImage, 
   searchLocalImages, 
-  searchDockerHub,
-  pullDockerImage
+  searchDockerHub
+  // pullDockerImage - Removed since it's unused
 } from '../services/dockerService';
 import { 
   RefreshCw, 
@@ -28,16 +28,23 @@ import {
 } from 'lucide-react';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 
-// Progress interface for Docker image pulling
-interface DockerPullProgress {
-  [layerId: string]: {
-    action?: string;
-    progress?: string;
-    complete?: boolean;
-    timestamp?: number;
-  };
+// Layer info for Docker image pulling
+interface DockerLayerInfo {
+  action?: string;
+  progress?: string;
+  complete?: boolean;
+  timestamp?: number;
+}
+
+// Base interface for progress data
+interface DockerPullProgressBase {
   repository?: string;
   status?: string;
+}
+
+// Progress interface for Docker image pulling
+interface DockerPullProgress extends DockerPullProgressBase {
+  [layerId: string]: DockerLayerInfo | string | undefined;
 }
 
 const DockerImageList: React.FC = () => {
@@ -311,31 +318,37 @@ const DockerImageList: React.FC = () => {
       setPullingImage(null);
     }
   };
-
   // Formats the progress text from Docker pull progress data
   const formatProgressText = (progress: DockerPullProgress) => {
     if (!progress) return 'Preparing...';
     
-    if (progress.status && progress.status.includes('Downloaded')) {
+    if (progress.status && typeof progress.status === 'string' && progress.status.includes('Downloaded')) {
       return 'Download complete';
     }
     
     const layers = Object.entries(progress).filter(
-      ([key, val]) => key !== 'repository' && key !== 'status'
+      ([key, _]) => key !== 'repository' && key !== 'status'
     );
     
     // Count completed and in-progress layers
-    const completed = layers.filter(([_, val]) => val.complete).length;
+    const completed = layers.filter(([_, value]) => {
+      const layerInfo = value as DockerLayerInfo;
+      return layerInfo && layerInfo.complete;
+    }).length;
     const total = layers.length;
     
     if (total === 0) return 'Preparing...';
     
     // Find a layer that's actively downloading/extracting to show its progress
-    const activeLayer = layers.find(([_, val]) => val.action && val.progress && !val.complete);
+    const activeLayer = layers.find(([_, value]) => {
+      const layerInfo = value as DockerLayerInfo;
+      return layerInfo && layerInfo.action && layerInfo.progress && !layerInfo.complete;
+    });
     
     if (activeLayer) {
-      const [layerId, { action, progress: progressText }] = activeLayer;
-      return `${completed}/${total} layers complete - ${action}: ${progressText}`;
+      const [_, value] = activeLayer;
+      const layerInfo = value as DockerLayerInfo;
+      return `${completed}/${total} layers complete - ${layerInfo.action}: ${layerInfo.progress}`;
     }
     
     return `${completed}/${total} layers complete`;

@@ -1,6 +1,6 @@
 // QEMU VM Management Service
 import { supabase } from './supabase';
-import { VirtualMachine, VirtualDisk, ISO, Command } from '../types';
+import { VirtualMachine, VirtualDisk, ISO, Command, QEMUConnection } from '../types';
 import { notify } from '../components/NotificationsContainer';
 
 const API_URL = 'http://localhost:5002'; // Updated to use port 5002
@@ -191,8 +191,38 @@ export const qemuService = {
    */
   async startVirtualMachine(id: string): Promise<VirtualMachine> {
     try {
+      // First get the current VM details
+      const { data: currentVM, error: fetchError } = await supabase
+        .from('virtual_machines_metadata')
+        .select('*')
+        .eq('local_vm_id', id)
+        .single();
+
+      if (fetchError) {
+        throw new Error('Failed to fetch VM details before starting');
+      }
+
+      if (!currentVM) {
+        throw new Error('VM not found');
+      }
+
       const response = await fetch(`${API_URL}/api/vms/${id}/start`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: id,
+          name: currentVM.name,
+          cpuCores: currentVM.cpu_cores,
+          memory: currentVM.memory,
+          disk: {
+            path: currentVM.disk_path,
+          },
+          iso: {
+            path: currentVM.iso_path,
+          }
+        }),
       });
 
       if (!response.ok) {
@@ -206,22 +236,13 @@ export const qemuService = {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const { data: vmMetadata } = await supabase
+          await supabase
             .from('virtual_machines_metadata')
-            .select('id')
-            .eq('local_vm_id', id)
-            .eq('user_id', user.id)
-            .single();
-            
-          if (vmMetadata) {
-            await supabase
-              .from('virtual_machines_metadata')
-              .update({
-                status: 'running',
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', vmMetadata.id);
-          }
+            .update({
+              status: 'running',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', currentVM.id);
         }
       } catch (err) {
         console.warn('Failed to update VM status in Supabase:', err);
@@ -827,3 +848,35 @@ export const getCommandHistory = qemuService.getCommandHistory;
 // Add this to the re-export section at the bottom of the file
 export const registerISOPath = qemuService.registerISOPath;
 export const uploadISO = qemuService.uploadISO;
+
+// QEMU Connection configuration
+export const configureQEMUConnection = async (connection: QEMUConnection): Promise<{ success: boolean }> => {
+  try {
+    // In a real app, this would save to backend or local storage
+    localStorage.setItem('qemu_connection', JSON.stringify(connection));
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to configure QEMU connection:', err);
+    throw new Error('Failed to configure QEMU connection');
+  }
+};
+
+// Get QEMU connection status
+export const getQEMUConnectionStatus = async (): Promise<{ connected: boolean, version?: string, machineDetails?: any }> => {
+  try {
+    // In a real app, this would check the connection to the QEMU server
+    // For now, we'll simulate a successful connection
+    return {
+      connected: true,
+      version: 'QEMU emulator version 6.2.0',
+      machineDetails: {
+        cpuModel: 'Intel Core i7',
+        totalMemory: '16 GB',
+        availableCpuCores: 8
+      }
+    };
+  } catch (err) {
+    console.error('Failed to get QEMU connection status:', err);
+    return { connected: false };
+  }
+};
