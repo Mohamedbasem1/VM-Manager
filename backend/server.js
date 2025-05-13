@@ -107,10 +107,12 @@ app.post('/api/create-disk', (req, res) => {
         message: 'A disk with this name already exists'
       });
     }
+      // Build the QEMU command with explicit path to qemu-img
+    // Make sure to include the gigabyte (G) suffix for size if not already present
+    const sizeWithUnit = size.toString().endsWith('G') ? size : `${size}G`;
     
-    // Build the QEMU command with explicit path to qemu-img
     const qemuImgPath = path.join(QEMU_PATH, 'qemu-img.exe');
-    const command = `"${qemuImgPath}" create -f ${format} "${diskPath}" ${size}`;
+    const command = `"${qemuImgPath}" create -f ${format} "${diskPath}" ${sizeWithUnit}`;
     
     console.log(`Executing command: ${command}`);
     

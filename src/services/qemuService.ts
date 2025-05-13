@@ -45,6 +45,12 @@ export const qemuService = {
         return []; // Return empty array if no VMs found
       }
       
+      // Get all disk metadata first to avoid async issues inside map
+      const { data: diskMetadata } = await supabase
+        .from('virtual_disks_metadata')
+        .select('*')
+        .eq('user_id', user.id);
+      
       // Map Supabase data to VirtualMachine objects
       const vms = vmMetadata.map(vm => {
         // Extract disk info from path
@@ -56,12 +62,23 @@ export const qemuService = {
           const diskName = diskNameParts[0];
           const diskFormat = diskNameParts[1];
           
+          // Find the disk size from the pre-fetched disk metadata
+          let diskSize = 10; // Default to 10GB
+          if (diskMetadata) {
+            const matchingDisk = diskMetadata.find(
+              d => d.name === diskName && d.format === diskFormat
+            );
+            if (matchingDisk && matchingDisk.size) {
+              diskSize = matchingDisk.size;
+            }
+          }
+          
           disk = {
             id: `disk_${diskName}_${diskFormat}`,
             name: diskName,
             format: diskFormat,
             path: vm.disk_path,
-            size: 0, // Size info not available directly
+            size: diskSize,
             createdAt: new Date(vm.created_at)
           };
         }
@@ -458,11 +475,20 @@ export const qemuService = {
       }
 
       // Convert the disk data to the expected VirtualDisk format
+      // Properly parse the size, which might come as "10G" or similar
+      let finalSize: number;
+      if (typeof diskData.size === 'string') {
+        const sizeStr = diskData.size;
+        finalSize = parseInt(sizeStr);
+      } else {
+        finalSize = diskData.size;
+      }
+      
       return {
         id: `disk_${diskData.name}_${diskData.format}`,
         name: diskData.name,
         format: diskData.format,
-        size: parseInt(diskData.size),
+        size: finalSize,
         path: diskData.path,
         createdAt: diskData.createdAt || new Date()
       };
