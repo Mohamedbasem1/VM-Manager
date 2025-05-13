@@ -421,7 +421,21 @@ export const qemuService = {
 
   /**
    * Create a new virtual disk
-   */
+   */  async getAvailableDiskSpace(): Promise<number> {
+    try {
+      const response = await fetch(`${API_URL}/api/disk-space`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch available disk space');
+      }
+      
+      const data = await response.json();
+      return parseFloat(data.availableSpace);
+    } catch (error) {
+      console.error('Error getting available disk space:', error);
+      throw error;
+    }
+  },
+  
   async createVirtualDisk(
     name: string,
     format: string,
@@ -865,6 +879,7 @@ export const updateVirtualMachine = qemuService.updateVirtualMachine;
 export const deleteVirtualMachine = qemuService.deleteVirtualMachine;
 export const createVirtualDisk = qemuService.createVirtualDisk;
 export const getVirtualDisks = qemuService.getVirtualDisks;
+export const getAvailableDiskSpace = qemuService.getAvailableDiskSpace;
 export const updateVirtualDisk = qemuService.updateVirtualDisk;
 export const deleteVirtualDisk = qemuService.deleteVirtualDisk;
 export const getISOs = qemuService.getISOs;

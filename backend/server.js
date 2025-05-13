@@ -4,6 +4,7 @@ const { exec, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os'); // Added for Docker functionality
+const childProcess = require('child_process'); // For checking disk space
 
 // Initialize express app
 const app = express();
@@ -18,6 +19,75 @@ const VM_DATA_PATH = path.join(__dirname, 'data');
 const isosDir = path.join(__dirname, 'isos');
 // Path to store Dockerfiles
 const dockerfilesDir = path.join(__dirname, 'dockerfiles');
+
+// Function to get free disk space in GB
+function getFreeDiskSpaceInGB(directory) {
+  return new Promise((resolve, reject) => {
+    try {
+      // For Windows
+      if (process.platform === 'win32') {
+        const drive = path.parse(directory).root;
+        const driveLetterOnly = drive && drive.length >= 1 ? drive.charAt(0) : 'C';
+        
+        // Use PowerShell to get more accurate disk info
+        const psCommand = `powershell -Command "& {(Get-PSDrive ${driveLetterOnly} | Select-Object Free).Free}"`;
+        
+        childProcess.exec(psCommand, (error, stdout) => {
+          if (error) {
+            console.error('PowerShell disk space check failed, falling back to wmic', error);
+            // Fallback to wmic if PowerShell fails
+            const wmicCommand = `wmic logicaldisk where "DeviceID='${driveLetterOnly}:'" get freespace`;
+            childProcess.exec(wmicCommand, (wmicError, wmicOutput) => {
+              if (wmicError) {
+                reject(wmicError);
+                return;
+              }
+              
+              // Parse output to get free space in bytes
+              const match = wmicOutput.match(/\d+/);
+              if (match) {
+                // Convert bytes to gigabytes
+                const freeSpaceGB = parseInt(match[0]) / (1024 * 1024 * 1024);
+                console.log(`[WMIC] Drive ${driveLetterOnly}: has ${freeSpaceGB.toFixed(2)}GB free space`);
+                resolve(freeSpaceGB);
+              } else {
+                reject(new Error('Failed to parse free disk space from wmic output'));
+              }
+            });
+            return;
+          }
+          
+          // PowerShell returns bytes, convert to GB
+          const freeBytes = parseInt(stdout.trim());
+          if (!isNaN(freeBytes)) {
+            const freeSpaceGB = freeBytes / (1024 * 1024 * 1024);
+            console.log(`[PowerShell] Drive ${driveLetterOnly}: has ${freeSpaceGB.toFixed(2)}GB free space`);
+            resolve(freeSpaceGB);
+          } else {
+            reject(new Error('Failed to parse free disk space from PowerShell output'));
+          }
+        });
+      } 
+      // For Unix/Linux/MacOS
+      else {
+        childProcess.exec(`df -k "${directory}" | tail -1 | awk '{print $4}'`, (error, stdout) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          
+          // Convert KB to GB
+          const freeSpaceGB = parseInt(stdout) / (1024 * 1024);
+          console.log(`[Unix] Directory ${directory} has ${freeSpaceGB.toFixed(2)}GB free space`);
+          resolve(freeSpaceGB);
+        });
+      }
+    } catch (err) {
+      console.error('Unexpected error in getFreeDiskSpaceInGB:', err);
+      reject(err);
+    }
+  });
+}
 
 // Ensure data directory exists
 if (!fs.existsSync(VM_DATA_PATH)) {
@@ -64,7 +134,7 @@ function isValidFormat(format) {
 let isoInfo = {};
 
 // API endpoint to create a disk
-app.post('/api/create-disk', (req, res) => {
+app.post('/api/create-disk', async (req, res) => {
   try {
     const { diskName, size, format, user_id } = req.body;
     
@@ -107,7 +177,34 @@ app.post('/api/create-disk', (req, res) => {
         message: 'A disk with this name already exists'
       });
     }
-      // Build the QEMU command with explicit path to qemu-img
+    
+    // Parse disk size to numeric value (remove 'G' if present)
+    const sizeValue = parseFloat(size.toString().replace('G', ''));
+    
+    // Add a buffer (10% extra) to account for filesystem overhead and metadata
+    const requiredSpace = sizeValue * 1.1;
+    
+    try {
+      // Check available disk space
+      const availableSpace = await getFreeDiskSpaceInGB(disksDir);
+      console.log(`Available disk space: ${availableSpace.toFixed(2)}GB, Required: ${requiredSpace.toFixed(2)}GB`);
+      
+      if (availableSpace < requiredSpace) {
+        // Calculate a recommended size (75% of available space)
+        const recommendedSize = Math.floor(availableSpace * 0.75);
+        
+        return res.status(400).json({
+          success: false,
+          message: `Not enough disk space to create a ${sizeValue}GB disk. Available space: ${availableSpace.toFixed(2)}GB.`,
+          availableSpace: availableSpace.toFixed(2),
+          recommendedSize: recommendedSize > 0 ? recommendedSize : 1
+        });
+      }
+    } catch (spaceError) {
+      console.error('Error checking disk space:', spaceError);
+      // Continue with creation even if space checking fails, to maintain backward compatibility
+      console.warn('Proceeding with disk creation despite space check failure');
+    }      // Build the QEMU command with explicit path to qemu-img
     // Make sure to include the gigabyte (G) suffix for size if not already present
     const sizeWithUnit = size.toString().endsWith('G') ? size : `${size}G`;
     
@@ -135,14 +232,30 @@ app.post('/api/create-disk', (req, res) => {
       console.log(`Command stdout: ${stdout}`);
       
       // Update disk info - ensure we consistently store the size with 'G' suffix
-      const sizeWithUnit = size.toString().endsWith('G') ? size : `${size}G`;
+      const diskSizeWithUnit = size.toString().endsWith('G') ? size : `${size}G`;
+      
+      // Get actual disk file size for verification
+      try {
+        const stats = fs.statSync(diskPath);
+        const fileSizeInBytes = stats.size;
+        const fileSizeInGB = fileSizeInBytes / (1024 * 1024 * 1024);
+        console.log(`Disk file size: ${fileSizeInGB.toFixed(2)}GB (${fileSizeInBytes} bytes)`);
+        
+        // Log actual vs requested size for debugging
+        console.log(`Requested size: ${parseFloat(size.toString().replace('G', ''))}GB, Actual file size: ${fileSizeInGB.toFixed(2)}GB`);
+        
+        // Note: The actual file size of a thin-provisioned disk (like qcow2) might be 
+        // smaller than the reported size since it grows as needed
+      } catch (statError) {
+        console.warn(`Could not get disk file size: ${statError.message}`);
+      }
       
       // Return success response with the disk information
       const diskData = {
         name: sanitizedDiskName,
         format,
         path: diskPath,
-        size: sizeWithUnit,
+        size: diskSizeWithUnit,
         createdAt: new Date().toISOString(),
         user_id: user_id
       };
@@ -160,6 +273,25 @@ app.post('/api/create-disk', (req, res) => {
       success: false, 
       message: 'An unexpected error occurred', 
       error: err.message 
+    });  }
+});
+
+// API endpoint to get available disk space
+app.get('/api/disk-space', async (req, res) => {
+  try {
+    const availableSpace = await getFreeDiskSpaceInGB(disksDir);
+    
+    res.status(200).json({
+      success: true,
+      availableSpace: availableSpace.toFixed(2),
+      unit: 'GB'
+    });
+  } catch (err) {
+    console.error('Error checking disk space:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check disk space',
+      error: err.message
     });
   }
 });
