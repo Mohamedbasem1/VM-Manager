@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Monitor, List, X, Settings, Info, HardDrive, CpuIcon, Command, Grid, Home, User, LayoutDashboard, LogIn, UserPlus, LogOut } from 'lucide-react';
+import { Monitor, List, X, Settings, Info, HardDrive, CpuIcon, Command, Grid, Home, User, LayoutDashboard, LogIn, UserPlus, LogOut, Package } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 // Add a UserProfile interface to include the profile data we need
@@ -63,6 +63,7 @@ const Header: React.FC = () => {
   const navLinks = [
     { name: 'Home', path: '/', icon: <Home size={16} className="mr-2" /> },
     { name: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={16} className="mr-2" /> },
+    { name: 'Docker', path: '/create?tab=docker', icon: <Package size={16} className="mr-2" /> },
     { name: 'Create', path: '/create', icon: <Command size={16} className="mr-2" /> },
   ];
 
