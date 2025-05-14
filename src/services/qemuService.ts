@@ -1,6 +1,6 @@
 // QEMU VM Management Service
 import { supabase } from './supabase';
-import { VirtualMachine, VirtualDisk, ISO, Command } from '../types';
+import { VirtualMachine, VirtualDisk, ISO, Command, QEMUConnection } from '../types';
 import { notify } from '../components/NotificationsContainer';
 
 const API_URL = 'http://localhost:5002'; // Updated to use port 5002
@@ -45,6 +45,12 @@ export const qemuService = {
         return []; // Return empty array if no VMs found
       }
       
+      // Get all disk metadata first to avoid async issues inside map
+      const { data: diskMetadata } = await supabase
+        .from('virtual_disks_metadata')
+        .select('*')
+        .eq('user_id', user.id);
+      
       // Map Supabase data to VirtualMachine objects
       const vms = vmMetadata.map(vm => {
         // Extract disk info from path
@@ -56,12 +62,23 @@ export const qemuService = {
           const diskName = diskNameParts[0];
           const diskFormat = diskNameParts[1];
           
+          // Find the disk size from the pre-fetched disk metadata
+          let diskSize = 10; // Default to 10GB
+          if (diskMetadata) {
+            const matchingDisk = diskMetadata.find(
+              d => d.name === diskName && d.format === diskFormat
+            );
+            if (matchingDisk && matchingDisk.size) {
+              diskSize = matchingDisk.size;
+            }
+          }
+          
           disk = {
             id: `disk_${diskName}_${diskFormat}`,
             name: diskName,
             format: diskFormat,
             path: vm.disk_path,
-            size: 0, // Size info not available directly
+            size: diskSize,
             createdAt: new Date(vm.created_at)
           };
         }
@@ -404,7 +421,21 @@ export const qemuService = {
 
   /**
    * Create a new virtual disk
-   */
+   */  async getAvailableDiskSpace(): Promise<number> {
+    try {
+      const response = await fetch(`${API_URL}/api/disk-space`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch available disk space');
+      }
+      
+      const data = await response.json();
+      return parseFloat(data.availableSpace);
+    } catch (error) {
+      console.error('Error getting available disk space:', error);
+      throw error;
+    }
+  },
+  
   async createVirtualDisk(
     name: string,
     format: string,
@@ -458,11 +489,20 @@ export const qemuService = {
       }
 
       // Convert the disk data to the expected VirtualDisk format
+      // Properly parse the size, which might come as "10G" or similar
+      let finalSize: number;
+      if (typeof diskData.size === 'string') {
+        const sizeStr = diskData.size;
+        finalSize = parseInt(sizeStr);
+      } else {
+        finalSize = diskData.size;
+      }
+      
       return {
         id: `disk_${diskData.name}_${diskData.format}`,
         name: diskData.name,
         format: diskData.format,
-        size: parseInt(diskData.size),
+        size: finalSize,
         path: diskData.path,
         createdAt: diskData.createdAt || new Date()
       };
@@ -839,6 +879,7 @@ export const updateVirtualMachine = qemuService.updateVirtualMachine;
 export const deleteVirtualMachine = qemuService.deleteVirtualMachine;
 export const createVirtualDisk = qemuService.createVirtualDisk;
 export const getVirtualDisks = qemuService.getVirtualDisks;
+export const getAvailableDiskSpace = qemuService.getAvailableDiskSpace;
 export const updateVirtualDisk = qemuService.updateVirtualDisk;
 export const deleteVirtualDisk = qemuService.deleteVirtualDisk;
 export const getISOs = qemuService.getISOs;
@@ -848,3 +889,35 @@ export const getCommandHistory = qemuService.getCommandHistory;
 // Add this to the re-export section at the bottom of the file
 export const registerISOPath = qemuService.registerISOPath;
 export const uploadISO = qemuService.uploadISO;
+
+// QEMU Connection configuration
+export const configureQEMUConnection = async (connection: QEMUConnection): Promise<{ success: boolean }> => {
+  try {
+    // In a real app, this would save to backend or local storage
+    localStorage.setItem('qemu_connection', JSON.stringify(connection));
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to configure QEMU connection:', err);
+    throw new Error('Failed to configure QEMU connection');
+  }
+};
+
+// Get QEMU connection status
+export const getQEMUConnectionStatus = async (): Promise<{ connected: boolean, version?: string, machineDetails?: any }> => {
+  try {
+    // In a real app, this would check the connection to the QEMU server
+    // For now, we'll simulate a successful connection
+    return {
+      connected: true,
+      version: 'QEMU emulator version 6.2.0',
+      machineDetails: {
+        cpuModel: 'Intel Core i7',
+        totalMemory: '16 GB',
+        availableCpuCores: 8
+      }
+    };
+  } catch (err) {
+    console.error('Failed to get QEMU connection status:', err);
+    return { connected: false };
+  }
+};

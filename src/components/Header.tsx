@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Monitor, List, Moon, Sun, X, Settings, Info, HardDrive, CpuIcon, Command, Grid, Home, Bell, User, LayoutDashboard, Package, LogIn, UserPlus, LogOut } from 'lucide-react';
+import { Monitor, List, X, Settings, Info, HardDrive, CpuIcon, Command, Grid, Home, User, LayoutDashboard, LogIn, UserPlus, LogOut } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 // Add a UserProfile interface to include the profile data we need
@@ -12,14 +12,12 @@ const Header: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [darkMode, setDarkMode] = useState(() => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);  const [darkMode, setDarkMode] = useState(() => {
     const savedMode = localStorage.getItem('darkMode');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     return savedMode ? savedMode === 'true' : prefersDark;
   });
   const [profileOpen, setProfileOpen] = useState(false);
-  const [notifications] = useState<number>(0); // Removed unused setNotifications
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false); // Set to false for now
   const isConnected = true; // Placeholder for connection status
   // Add a profile state with type UserProfile
@@ -47,11 +45,6 @@ const Header: React.FC = () => {
       setProfile(null);
     }
   }, [user]);
-
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
-  };
-
   const closeMobileMenu = () => {
     setMobileMenuOpen(false);
   };
@@ -132,21 +125,6 @@ const Header: React.FC = () => {
                 ))}
               </div>
             )}
-            {/* Notifications - only show if logged in */}
-            {isLoggedIn && (
-              <button
-                className="relative p-2 rounded-md text-gray-500 dark:text-gray-300 hover:text-purple-700 dark:hover:text-purple-300 hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                aria-label="Notifications"
-                title="Notifications"
-              >
-                <Bell size={20} />
-                {notifications > 0 && (
-                  <span className="absolute top-1 right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-red-600 rounded-full">
-                    {notifications}
-                  </span>
-                )}
-              </button>
-            )}
             {/* Profile Dropdown - only show if logged in */}
             {isLoggedIn && (
               <div className="relative">
@@ -205,19 +183,6 @@ const Header: React.FC = () => {
             }`}>
               {isConnected ? 'Connected' : 'Disconnected'}
             </span>
-            {/* Dark mode toggle */}
-            <button
-              onClick={toggleDarkMode}
-              className="p-2 rounded-md text-gray-500 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-400 transition-all duration-200 transform hover:scale-105"
-              aria-label={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-              title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-            >
-              {darkMode ? (
-                <Sun size={20} className="h-5 w-5 text-amber-500" />
-              ) : (
-                <Moon size={20} className="h-5 w-5 text-indigo-600" />
-              )}
-            </button>
             {/* Mobile menu button */}
             <div className="sm:hidden">
               <button

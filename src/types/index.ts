@@ -6,7 +6,7 @@ export interface VirtualMachine {
   name: string;
   cpuCores: number;
   memory: number; // in GB
-  status: 'running' | 'stopped';
+  status: 'running' | 'stopped' | 'paused';
   disk?: VirtualDisk;
   iso?: ISO;
   createdAt: Date;
@@ -97,6 +97,14 @@ export interface VMMetadata {
   user_id: string;
   created_at: string;
   updated_at: string;
+}
+
+// QEMU Connection settings
+export interface QEMUConnection {
+  host: string;
+  port: number;
+  enabled: boolean;
+  secured: boolean;
 }
 
 export interface DiskMetadata {
