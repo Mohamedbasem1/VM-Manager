@@ -7,7 +7,8 @@ import {
   deleteDockerImage, 
   searchLocalImages, 
   searchDockerHub,
-  pullDockerImage
+  pullDockerImage,
+  runDockerContainer
 } from '../services/dockerService';
 import { 
   RefreshCw, 
@@ -24,9 +25,38 @@ import {
   Download,
   ExternalLink,
   X,
-  Layers
+  Layers,
+  Play
 } from 'lucide-react';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
+
+// Define CSS animations
+const fadeInAnimation = `
+  @keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .animate-fadeIn {
+    animation: fadeIn 0.3s ease-out forwards;
+  }
+
+  @keyframes slideIn {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .animate-slideIn {
+    animation: slideIn 0.3s ease-out forwards;
+  }
+
+  @keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
+  .animate-pulse-slow {
+    animation: pulse 2s infinite;
+  }
+`;
 
 // Progress interface for Docker image pulling
 interface DockerPullProgress {
@@ -76,6 +106,16 @@ const DockerImageList: React.FC = () => {
   // Build form state
   const [selectedDockerfilePath, setSelectedDockerfilePath] = useState('');
   const [imageTag, setImageTag] = useState('');
+
+  const [startingImageId, setStartingImageId] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [startSuccess, setStartSuccess] = useState<string | null>(null);
+
+  // Container start configuration state
+  const [showStartModal, setShowStartModal] = useState(false);
+  const [containerName, setContainerName] = useState('');
+  const [containerPorts, setContainerPorts] = useState('');
+  const [selectedImage, setSelectedImage] = useState<DockerImage | null>(null);
 
   useEffect(() => {
     loadData();
@@ -341,7 +381,71 @@ const DockerImageList: React.FC = () => {
     return `${completed}/${total} layers complete`;
   };
 
+  const openStartModal = (image: DockerImage) => {
+    setSelectedImage(image);
+    setContainerName('');
+    setContainerPorts('');
+    setShowStartModal(true);
+    setStartError(null);
+  };
+
+  const closeStartModal = () => {
+    setShowStartModal(false);
+    setSelectedImage(null);
+  };
+
+  const handleStartContainer = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    
+    if (!selectedImage) return;
+    
+    const imageTag = selectedImage.repository && selectedImage.tag ? 
+      `${selectedImage.repository}:${selectedImage.tag}` : 
+      selectedImage.id;
+    
+    setStartingImageId(selectedImage.id);
+    setStartError(null);
+    setStartSuccess(null);
+    
+    try {
+      // Pass options for container name and ports if provided
+      const options: { name?: string; ports?: string } = {};
+      if (containerName.trim()) options.name = containerName.trim();
+      if (containerPorts.trim()) options.ports = containerPorts.trim();
+      
+      const containerId = await runDockerContainer(imageTag, options);
+      setStartSuccess(`Container started successfully with ID: ${containerId}`);
+      
+      // Close modal and reset form
+      closeStartModal();
+      
+      // Reset success message after 3 seconds
+      setTimeout(() => {
+        setStartSuccess(null);
+      }, 3000);
+    } catch (err) {
+      setStartError(err instanceof Error ? err.message : 'Failed to start container');
+    } finally {
+      setStartingImageId(null);
+    }
+  };
+
   const displayedImages = searchQuery.trim() ? searchResults : images;
+
+  // Inject CSS animations
+  useEffect(() => {
+    const styleTag = document.createElement('style');
+    styleTag.id = 'docker-image-animations';
+    styleTag.innerHTML = fadeInAnimation;
+    document.head.appendChild(styleTag);
+
+    return () => {
+      const existingStyle = document.getElementById('docker-image-animations');
+      if (existingStyle) {
+        existingStyle.remove();
+      }
+    };
+  }, []);
 
   if (loading && images.length === 0) {
     return (
@@ -741,41 +845,44 @@ const DockerImageList: React.FC = () => {
           </div>
         </div>
       ) : (
-        <div className="overflow-x-auto bg-white/50 dark:bg-gray-900/30 rounded-lg border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
+        <div className="overflow-x-auto bg-white/50 dark:bg-gray-900/30 rounded-lg border border-gray-200 dark:border-gray-700 backdrop-blur-sm shadow-md hover:shadow-lg transition-shadow duration-300">
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700">
+            <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 sticky top-0">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Repository
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Tag
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   ID
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Size
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Created
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3.5 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-64">
                   Actions
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {displayedImages.map((image, index) => (
-                <tr key={image.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${index % 2 === 0 ? 'bg-gray-50/50 dark:bg-gray-800/50' : ''}`}>
+                <tr 
+                  key={image.id} 
+                  className={`hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 transform hover:scale-[1.01] ${index % 2 === 0 ? 'bg-gray-50/50 dark:bg-gray-800/50' : ''}`}
+                >
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                     <div className="flex items-center">
-                      <Package size={16} className="text-blue-500 dark:text-blue-400 mr-2" />
-                      {image.repository || '<none>'}
+                      <Package size={18} className="text-blue-500 dark:text-blue-400 mr-2" />
+                      <span className="truncate max-w-xs">{image.repository || '<none>'}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                    <span className="px-2 py-1 text-xs font-semibold rounded-md bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
+                    <span className="px-2.5 py-1.5 text-xs font-semibold rounded-md bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 shadow-sm">
                       {image.tag || '<none>'}
                     </span>
                   </td>
@@ -784,34 +891,59 @@ const DockerImageList: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                     <div className="flex items-center">
-                      <Server size={14} className="mr-1.5 text-gray-400" />
+                      <Server size={16} className="mr-1.5 text-gray-400" />
                       {image.size}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                     <div className="flex items-center">
-                      <Clock size={14} className="mr-1.5 text-gray-400" />
+                      <Clock size={16} className="mr-1.5 text-gray-400" />
                       {image.created}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      onClick={() => handleDeleteImage(image.id)}
-                      disabled={deletingImageId === image.id}
-                      className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 flex items-center justify-end ml-auto group"
-                    >
-                      {deletingImageId === image.id ? (
-                        <>
-                          <Loader size={16} className="mr-1 animate-spin" />
-                          <span>Deleting...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Trash2 size={16} className="mr-1 group-hover:animate-pulse" />
-                          <span>Delete</span>
-                        </>
-                      )}
-                    </button>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div className="flex items-center space-x-3">
+                      <button
+                        onClick={() => openStartModal(image)}
+                        disabled={startingImageId === image.id}
+                        className={`flex items-center rounded-md px-3 py-1.5 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800/60 transition-colors animate-pulse-slow ${
+                          startingImageId === image.id ? 'opacity-50 cursor-not-allowed animate-none' : ''
+                        }`}
+                        title="Start container"
+                      >
+                        {startingImageId === image.id ? (
+                          <>
+                            <Loader size={16} className="animate-spin mr-1.5" />
+                            <span>Starting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Play size={16} className="mr-1.5" />
+                            <span>Start</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteImage(image.id)}
+                        disabled={deletingImageId === image.id}
+                        className={`flex items-center rounded-md px-3 py-1.5 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800/60 transition-colors ${
+                          deletingImageId === image.id ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                        title="Delete image"
+                      >
+                        {deletingImageId === image.id ? (
+                          <>
+                            <Loader size={16} className="animate-spin mr-1.5" />
+                            <span>Deleting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 size={16} className="mr-1.5" />
+                            <span>Delete</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -832,6 +964,169 @@ const DockerImageList: React.FC = () => {
               </button>
             </div>
           )}
+        </div>
+      )}
+      
+      {startSuccess && (
+        <div className="fixed bottom-4 right-4 bg-green-100 dark:bg-green-900 border-l-4 border-green-500 text-green-700 dark:text-green-300 p-4 rounded shadow-lg z-50 max-w-md animate-slideIn">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm">{startSuccess}</p>
+            </div>
+            <button 
+              onClick={() => setStartSuccess(null)} 
+              className="ml-auto -mx-1.5 -my-1.5 rounded-full p-1.5 focus:outline-none"
+            >
+              <X className="h-4 w-4 text-green-500" />
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {startError && (
+        <div className="fixed bottom-4 right-4 bg-red-100 dark:bg-red-900 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded shadow-lg z-50 max-w-md animate-slideIn">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm">{startError}</p>
+            </div>
+            <button 
+              onClick={() => setStartError(null)} 
+              className="ml-auto -mx-1.5 -my-1.5 rounded-full p-1.5 focus:outline-none"
+            >
+              <X className="h-4 w-4 text-red-500" />
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Container Start Modal */}
+      {showStartModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="container-start-modal" role="dialog" aria-modal="true">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 bg-gray-900 bg-opacity-75 backdrop-blur-sm transition-opacity" aria-hidden="true"></div>
+            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div className="inline-block align-bottom bg-white dark:bg-gray-800 rounded-xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-gray-200 dark:border-gray-700 animate-fadeIn">
+              <div className="bg-white dark:bg-gray-800 px-6 pt-6 pb-4 sm:p-6">
+                <div className="flex items-start justify-between mb-5">
+                  <div className="flex items-center">
+                    <div className="bg-gradient-to-r from-blue-500 to-green-500 p-2 rounded-lg shadow-md mr-3">
+                      <Play className="h-6 w-6 text-white" />
+                    </div>
+                    <h3 className="text-lg leading-6 font-bold text-gray-900 dark:text-white" id="modal-title">
+                      Start Container
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeStartModal}
+                    className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 focus:outline-none"
+                  >
+                    <span className="sr-only">Close</span>
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="mt-4">
+                  <form onSubmit={handleStartContainer} className="space-y-5">
+                    <div className="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4 border border-gray-200 dark:border-gray-600/50">
+                      <label htmlFor="image-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Image
+                      </label>
+                      <div className="flex items-center bg-white dark:bg-gray-700 rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2.5">
+                        <Package className="text-blue-500 dark:text-blue-400 mr-2" size={18} />
+                        <input
+                          type="text"
+                          id="image-name"
+                          className="flex-1 bg-transparent focus:outline-none text-gray-900 dark:text-white font-medium"
+                          value={selectedImage?.repository && selectedImage?.tag 
+                            ? `${selectedImage.repository}:${selectedImage.tag}` 
+                            : selectedImage?.id || ''}
+                          disabled
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="container-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Container Name <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+                      </label>
+                      <div className="relative rounded-md shadow-sm">
+                        <input
+                          type="text"
+                          id="container-name"
+                          className="block w-full px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                          placeholder="e.g., my-web-server"
+                          value={containerName}
+                          onChange={(e) => setContainerName(e.target.value)}
+                        />
+                      </div>
+                      <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                        A custom name for your container for easy identification
+                      </p>
+                    </div>
+                    <div>
+                      <label htmlFor="port-mapping" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Port Mapping <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+                      </label>
+                      <div className="relative rounded-md shadow-sm">
+                        <input
+                          type="text"
+                          id="port-mapping"
+                          className="block w-full px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                          placeholder="e.g., 8080:80"
+                          value={containerPorts}
+                          onChange={(e) => setContainerPorts(e.target.value)}
+                        />
+                      </div>
+                      <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 flex items-start">
+                        <span className="flex-shrink-0 mt-0.5 mr-1.5">
+                          <Server size={14} className="text-gray-400" />
+                        </span>
+                        Map host ports to container ports (host:container)
+                      </p>
+                    </div>
+                    {startError && (
+                      <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 p-4 rounded-md flex items-start">
+                        <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5 text-red-500" />
+                        <p className="text-sm">{startError}</p>
+                      </div>
+                    )}
+                  </form>
+                </div>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-700 px-6 py-4 flex flex-row-reverse">
+                <button
+                  type="button"
+                  className="inline-flex justify-center rounded-md shadow-sm px-5 py-3 bg-gradient-to-r from-green-600 to-teal-600 text-base font-medium text-white hover:from-green-700 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-200 transform hover:scale-105"
+                  onClick={handleStartContainer}
+                  disabled={startingImageId !== null}
+                >
+                  {startingImageId !== null ? (
+                    <>
+                      <Loader size={18} className="mr-2 animate-spin" />
+                      Starting...
+                    </>
+                  ) : (
+                    <>
+                      <Play size={18} className="mr-2" />
+                      Start Container
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="mr-3 inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-5 py-3 bg-white dark:bg-gray-800 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+                  onClick={closeStartModal}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

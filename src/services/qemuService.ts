@@ -191,8 +191,38 @@ export const qemuService = {
    */
   async startVirtualMachine(id: string): Promise<VirtualMachine> {
     try {
+      // First get the current VM details
+      const { data: currentVM, error: fetchError } = await supabase
+        .from('virtual_machines_metadata')
+        .select('*')
+        .eq('local_vm_id', id)
+        .single();
+
+      if (fetchError) {
+        throw new Error('Failed to fetch VM details before starting');
+      }
+
+      if (!currentVM) {
+        throw new Error('VM not found');
+      }
+
       const response = await fetch(`${API_URL}/api/vms/${id}/start`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: id,
+          name: currentVM.name,
+          cpuCores: currentVM.cpu_cores,
+          memory: currentVM.memory,
+          disk: {
+            path: currentVM.disk_path,
+          },
+          iso: {
+            path: currentVM.iso_path,
+          }
+        }),
       });
 
       if (!response.ok) {
@@ -206,22 +236,13 @@ export const qemuService = {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const { data: vmMetadata } = await supabase
+          await supabase
             .from('virtual_machines_metadata')
-            .select('id')
-            .eq('local_vm_id', id)
-            .eq('user_id', user.id)
-            .single();
-            
-          if (vmMetadata) {
-            await supabase
-              .from('virtual_machines_metadata')
-              .update({
-                status: 'running',
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', vmMetadata.id);
-          }
+            .update({
+              status: 'running',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', currentVM.id);
         }
       } catch (err) {
         console.warn('Failed to update VM status in Supabase:', err);
